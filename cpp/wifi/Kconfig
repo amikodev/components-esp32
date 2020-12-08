@@ -1,0 +1,58 @@
+menu "Amikodev Wi-Fi"
+
+config AMIKODEV_WIFI_AP_ENABLED
+    bool "AP enabled"
+    default true
+    help 
+        AP enabled
+
+config AMIKODEV_WIFI_AP_SSID
+    string "AP SSID"
+    default "Amikodev_ESP32-AP"
+    depends on AMIKODEV_WIFI_AP_ENABLED
+    help
+        AP SSID
+
+config AMIKODEV_WIFI_AP_PSSWD
+    string "AP PSSWD"
+    default "12345678"
+    depends on AMIKODEV_WIFI_AP_ENABLED
+    help
+        AP PSSWD
+
+config AMIKODEV_WIFI_AP_HIDDEN
+    bool "AP HIDDEN"
+    default false
+    depends on AMIKODEV_WIFI_AP_ENABLED
+    help
+        AP HIDDEN
+
+
+
+config AMIKODEV_WIFI_STA_ENABLED
+    bool "STA enabled"
+    default false
+    help 
+        STA enabled
+
+config AMIKODEV_WIFI_STA_SSID
+    string "STA SSID"
+#    default "Amikodev_ESP32-AP"
+    depends on AMIKODEV_WIFI_STA_ENABLED
+    help
+        STA SSID
+
+config AMIKODEV_WIFI_STA_PSSWD
+    string "STA PSSWD"
+#    default "12345678"
+    depends on AMIKODEV_WIFI_STA_ENABLED
+    help
+        STA PSSWD
+
+config AMIKODEV_WIFI_SD_CARD
+    bool "SD card"
+    help
+        SD card enabled
+
+endmenu
+

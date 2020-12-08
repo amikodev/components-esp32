@@ -1,0 +1,6 @@
+set(COMPONENT_SRCS "wifi.cpp")
+set(COMPONENT_ADD_INCLUDEDIRS "./include")
+#set(COMPONENT_REQUIRES lwip mbedtls)
+#set(COMPONENT_PRIV_REQUIRES main nvs_flash app_update)
+set(COMPONENT_PRIV_REQUIRES nvs_flash fatfs)
+register_component()
