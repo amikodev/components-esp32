@@ -115,6 +115,6 @@ xTaskCreate(&Wifi::serverHandleTask, "server_handle_task", 4000, NULL, 6, NULL);
 ```
 
 # Внешние фреймворки и библиотеки
-* espressif/esp-idf#
-* Molorius/esp32-websocket#
-* LuxInTenebr1s/esp32_magicsee_r1#
+* [esp-idf](https://github.com/espressif/esp-idf)
+* [esp32-websocket](https://github.com/Molorius/esp32-websocket)
+* [esp32_magicsee_r1](https://github.com/LuxInTenebr1s/esp32_magicsee_r1)
