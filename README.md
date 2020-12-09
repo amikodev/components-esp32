@@ -1,6 +1,12 @@
 Автор: Приходько Дмитрий
 
 # Компоненты ESP32
+* [httprequest](#httprequest)
+* [r8ef](#r8ef)
+* [relay](#relay)
+* [sdcard](#sdcard)
+* [shiftload](#shiftload)
+* [wifi](#wifi)
 
 Для подключения компонента необходимо в корне проекта создать папку components и символическую ссылку на папку компонента, например:
 `ln -s ../../components/cpp/httprequest`
@@ -109,6 +115,6 @@ xTaskCreate(&Wifi::serverHandleTask, "server_handle_task", 4000, NULL, 6, NULL);
 ```
 
 # Внешние фреймворки и библиотеки
-* espressif/esp-idf
-* Molorius/esp32-websocket
-* LuxInTenebr1s/esp32_magicsee_r1
+* espressif/esp-idf#
+* Molorius/esp32-websocket#
+* LuxInTenebr1s/esp32_magicsee_r1#
