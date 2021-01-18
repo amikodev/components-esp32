@@ -1,6 +1,6 @@
 /*
 amikodev/components-esp32 - library components on esp-idf
-Copyright © 2020 Prihodko Dmitriy - prihdmitriy@yandex.ru
+Copyright © 2020 Prihodko Dmitriy - asketcnc@yandex.ru
 */
 
 /*
@@ -37,6 +37,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
  * ShiftLoad
+ * Для работы со сдвиговым регистром 74HC595N
  * @author Приходько Д. Г.
  */
 class ShiftLoad{
@@ -46,9 +47,14 @@ private:
     enum WorkType{
         WT_NONE = 0,
         WT_SPI,
-        WT_TIMER
+        WT_TIMER,
+        WT_TASK
     };
 
+    /**
+     * 
+     * @deprecated
+     */
     struct TimerData{
         uint8_t _cnt = 0;       // текущий бит
         ShiftLoad *shiftLoad;   // сдвиговый регистр
@@ -57,11 +63,20 @@ private:
         // uint8_t _count;         // Количество сдвиговых регистров
     };
 
+    struct TaskData{
+        // ShiftLoad *shiftLoad;   // сдвиговый регистр
+        gpio_num_t dataPin = GPIO_NUM_NC;
+        gpio_num_t latchPin = GPIO_NUM_NC;
+        gpio_num_t clockPin = GPIO_NUM_NC;
+        uint8_t count = 0;
+        uint8_t loadData[4] = {0x00};
+        bool isInverse = false;
+    };
+
     /**
      * SPI
      */
     spi_device_handle_t spi;
-    // SPI spi;
     
     /**
      * Количество сдвиговых регистров
@@ -71,8 +86,6 @@ private:
     /**
      * Load data
      */
-    // uint8_t loadData = 0x00;
-    // uint8_t loadData1 = 0x00;
     uint8_t loadData[4] = {0x00};
 
     /**
@@ -91,20 +104,29 @@ private:
     TimerData *timerData = NULL;
 
     /**
+     * Данные задачи
+     */
+    TaskData *taskData = NULL;
+
+    /**
      * Вывод данных
      */
-    gpio_num_t _dataPin;
+    gpio_num_t _dataPin = GPIO_NUM_NC;
 
     /**
      * Вывод защёлки
      */
-    gpio_num_t _latchPin;
+    gpio_num_t _latchPin = GPIO_NUM_NC;
 
     /**
      * Вывод таймера
      */
-    gpio_num_t _clockPin;
+    gpio_num_t _clockPin = GPIO_NUM_NC;
 
+    /**
+     * Очередь вывода
+     */
+    static xQueueHandle taskEvtQueue;
 
     /**
      * Управление нагрузкой определённого сдвигового регистра
@@ -119,11 +141,21 @@ private:
      * по таймеру
      * @param ind индекс сдвигового регистра (0-3)
      * @param data данные
+     * @deprecated
      */
     void writeViaTimer(uint8_t ind, uint8_t data);
 
     /**
+     * Управление нагрузкой определённого сдвигового регистра
+     * по задаче
+     * @param ind индекс сдвигового регистра (0-3)
+     * @param data данные
+     */
+    void writeViaTask(uint8_t ind, uint8_t data);
+
+    /**
      * Остановка таймера
+     * @deprecated
      */
     static void stopTimer();
 
@@ -151,22 +183,24 @@ public:
      * @param dataPin вывод данных
      * @param latchPin вывод защёлки
      * @param clockPin вывод таймера
+     * @deprecated
      */
     void initTimer(gpio_num_t dataPin, gpio_num_t latchPin, gpio_num_t clockPin);
+
+    /**
+     * Инициализация задачи.
+     * Запись в сдвиговый регистр будет производиться при её запуске.
+     * @param dataPin вывод данных
+     * @param latchPin вывод защёлки
+     * @param clockPin вывод таймера
+     */
+    void initTask(gpio_num_t dataPin, gpio_num_t latchPin, gpio_num_t clockPin);
 
     /**
      * Регистрация количества сдвиговых регистров
      * @param count количество
      */
     void registerCount(uint8_t count);
-
-    /**
-     * Управление нагрузкой
-     * @param data данные
-     */
-    // void write(uint8_t data);
-
-    // void write(uint8_t data0, uint8_t data1);
 
     /**
      * Управление нагрузкой определённого сдвигового регистра
@@ -197,6 +231,11 @@ public:
     void setInverse(bool inverse);
 
     /**
+     * Получить установлена ли инверсия выводов.
+     */
+    bool getInverse();
+
+    /**
      * Получить рабочие данные
      */
     uint8_t* getLoadData();
@@ -225,14 +264,17 @@ public:
     /**
      * Отправка данных по таймеру
      * @param arg параметры таймера
+     * @deprecated
      */
     static void timerCallback(void* arg);
 
+    /**
+     * Отправка данных по задаче
+     * @param arg параметры задачи
+     */
+    static void writeTask(void *arg);
+
 };
-
-
-
-
 
 #endif      // __SHIFTLOAD_H__
 

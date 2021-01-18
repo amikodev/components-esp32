@@ -1,6 +1,6 @@
 /*
 amikodev/components-esp32 - library components on esp-idf
-Copyright © 2020 Prihodko Dmitriy - prihdmitriy@yandex.ru
+Copyright © 2020 Prihodko Dmitriy - asketcnc@yandex.ru
 */
 
 /*
@@ -20,8 +20,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "shiftload.hpp"
 
-// const uint8_t ShiftLoad::PIN_NOT_USED = 255;
 esp_timer_handle_t ShiftLoad::timer = NULL;
+
+xQueueHandle ShiftLoad::taskEvtQueue = NULL;
 
 
 /**
@@ -69,6 +70,7 @@ void ShiftLoad::initSpi(gpio_num_t miso, gpio_num_t mosi, gpio_num_t sclk, gpio_
  * @param dataPin вывод данных
  * @param latchPin вывод защёлки
  * @param clockPin вывод таймера
+ * @deprecated
  */
 void ShiftLoad::initTimer(gpio_num_t dataPin, gpio_num_t latchPin, gpio_num_t clockPin){
     workType = WT_TIMER;
@@ -97,67 +99,43 @@ void ShiftLoad::initTimer(gpio_num_t dataPin, gpio_num_t latchPin, gpio_num_t cl
 }
 
 /**
+ * Инициализация задачи.
+ * Запись в сдвиговый регистр будет производиться при её запуске.
+ * @param dataPin вывод данных
+ * @param latchPin вывод защёлки
+ * @param clockPin вывод таймера
+ */
+void ShiftLoad::initTask(gpio_num_t dataPin, gpio_num_t latchPin, gpio_num_t clockPin){
+    workType = WT_TASK;
+
+    taskData = new TaskData();
+
+    _dataPin = dataPin;
+    _latchPin = latchPin;
+    _clockPin = clockPin;
+
+    uint64_t bitMask = 0;
+    bitMask |= (1Ull << dataPin);
+    bitMask |= (1Ull << latchPin);
+    bitMask |= (1Ull << clockPin);
+
+    gpio_config_t io_conf;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    io_conf.pin_bit_mask = bitMask;
+    gpio_config(&io_conf);
+
+    ShiftLoad::taskEvtQueue = xQueueCreate(10, sizeof(TaskData));
+    xTaskCreate(ShiftLoad::writeTask, "writeTask", 2048, NULL, 9, NULL);
+}
+
+/**
  * Регистрация количества сдвиговых регистров
  * @param count количество
  */
 void ShiftLoad::registerCount(uint8_t count){
     _count = count;
 }
-
-
-
-/**
- * Управление нагрузкой
- * @param data данные
- */
-// void ShiftLoad::write(uint8_t data){
-
-//     printf("ShiftLoad::write load data: 0x%02x \n", data);
-//     // fflush(stdout);
-
-//     esp_err_t ret;
-
-//     spi_transaction_t t;
-//     memset(&t, 0, sizeof(t));
-
-//     t.length = 8;
-//     // t.tx_buffer = data;
-//     t.tx_data[0] = data;
-//     t.user = (void*)1;
-//     t.flags = SPI_TRANS_USE_TXDATA;
-
-//     ret = spi_device_polling_transmit(spi, &t);
-//     assert(ret==ESP_OK);
-
-//     loadData[0] = data;
-
-// }
-
-// void ShiftLoad::write(uint8_t data0, uint8_t data1){
-//     printf("ShiftLoad::write load data0: 0x%02x, data1: 0x%02x \n", data0, data1);
-//     // fflush(stdout);
-
-//     esp_err_t ret;
-
-//     spi_transaction_t t;
-//     memset(&t, 0, sizeof(t));
-
-//     t.length = 8*2;
-//     // t.tx_buffer = data;
-//     t.tx_data[0] = data1;
-//     t.tx_data[1] = data0;
-//     t.user = (void*)1;
-//     t.flags = SPI_TRANS_USE_TXDATA;
-
-//     ret = spi_device_polling_transmit(spi, &t);
-//     assert(ret==ESP_OK);
-
-//     loadData[0] = data0;
-//     loadData[1] = data1;
-
-
-// }
-
 
 /**
  * Управление нагрузкой определённого сдвигового регистра
@@ -191,6 +169,7 @@ void ShiftLoad::writeViaSpi(uint8_t ind, uint8_t data){
  * по таймеру
  * @param ind индекс сдвигового регистра (0-3)
  * @param data данные
+ * @deprecated
  */
 void ShiftLoad::writeViaTimer(uint8_t ind, uint8_t data){
 
@@ -231,6 +210,82 @@ void ShiftLoad::writeViaTimer(uint8_t ind, uint8_t data){
 
 /**
  * Управление нагрузкой определённого сдвигового регистра
+ * по задаче
+ * @param ind индекс сдвигового регистра (0-3)
+ * @param data данные
+ */
+void ShiftLoad::writeViaTask(uint8_t ind, uint8_t data){
+
+    loadData[ind] = data;
+
+    TaskData *td = taskData;
+    td->dataPin = _dataPin;
+    td->latchPin = _latchPin;
+    td->clockPin = _clockPin;
+    td->count = _count;
+    memcpy(td->loadData, loadData, sizeof(uint8_t)*4);
+    td->isInverse = isInverse;
+
+    // отправляем данные в очередь
+    // дальнейшая обработка в методе writeTask
+    xQueueGenericSend(ShiftLoad::taskEvtQueue, (void *) td, (TickType_t) 0, queueSEND_TO_BACK);
+}
+
+/**
+ * Отправка данных по задаче
+ * @param arg параметры задачи
+ */
+void ShiftLoad::writeTask(void *arg){
+    TaskData *td = new TaskData();
+    for(;;){
+        if(xQueueReceive(taskEvtQueue, td, portMAX_DELAY)){
+            // устанавливаем защёлку
+            // printf("ShiftLoad latch %d [%llu] \n", 0, esp_timer_get_time());
+            gpio_set_level(td->latchPin, 0x00);
+
+            for(uint8_t i=0; i<td->count; i++){
+                uint8_t ld = td->loadData[i];
+                if(td->isInverse) ld = ~ld;     // инверсия выводов
+
+                for(uint8_t j=0; j<8; j++){
+                    uint8_t level = (ld >> j) & 0x01;
+                    // printf("ShiftLoad data %d:%d \n", j, level);
+                    gpio_set_level(td->dataPin, level);
+
+                    // дёргание вывода таймера
+                    for(uint8_t k=0; k<2; k++){
+                        gpio_set_level(td->clockPin, k%2==0);
+
+                        // задержка времени
+                        uint32_t us = 5;    // мкс
+                        uint32_t m = esp_timer_get_time();
+                        uint32_t e = m + us;
+                        if(m > e){      // overflow
+                            while(esp_timer_get_time() > e){}
+                        }
+                        while(esp_timer_get_time() < e){}
+                    }
+                }
+            }
+
+            // сбрасываем защёлку
+            // printf("ShiftLoad latch %d [%llu] \n", 1, esp_timer_get_time());
+            gpio_set_level(td->latchPin, 0xFF);
+            // задержка времени
+            uint32_t us = 5;    // мкс
+            uint32_t m = esp_timer_get_time();
+            uint32_t e = m + us;
+            if(m > e){      // overflow
+                while(esp_timer_get_time() > e){}
+            }
+            while(esp_timer_get_time() < e){}
+
+        }
+    }
+}
+
+/**
+ * Управление нагрузкой определённого сдвигового регистра
  * @param ind индекс сдвигового регистра (0-3)
  * @param data данные
  */
@@ -244,16 +299,14 @@ void ShiftLoad::write(uint8_t ind, uint8_t data){
     }
 
     printf("ShiftLoad::write ind: %d; load data: 0x%02x \n", ind, data);
-    // fflush(stdout);
 
     if(workType == WT_SPI){
         writeViaSpi(ind, data);
     } else if(workType == WT_TIMER){
         writeViaTimer(ind, data);
+    } else if(workType == WT_TASK){
+        writeViaTask(ind, data);
     }
-
-    // loadData[0] = data0;
-    // loadData[1] = data1;
 }
 
 /**
@@ -277,7 +330,6 @@ void ShiftLoad::writeByNum(uint8_t ind, uint8_t num, bool state){
     }
 
     printf("ShiftLoad::writeByNum ind: %d; load data: 0x%02x \n", ind, data);
-    // fflush(stdout);
 
     write(ind, data);
 
@@ -300,9 +352,16 @@ void ShiftLoad::setInverse(bool inverse){
     printf("ShiftLoad::setInverse : %d \n", inverse);
     isInverse = inverse;
 }
+/**
+ * Получить установлена ли инверсия выводов.
+ */
+bool ShiftLoad::getInverse(){
+    return isInverse;
+}
 
 /**
  * Остановка таймера
+ * @deprecated
  */
 void ShiftLoad::stopTimer(){
     if(timer != NULL){
@@ -352,6 +411,7 @@ gpio_num_t ShiftLoad::getClockPin(){
 /**
  * Отправка данных по таймеру
  * @param arg параметры таймера
+ * @deprecated
  */
 void ShiftLoad::timerCallback(void* arg){
     TimerData *td = (TimerData *)arg;

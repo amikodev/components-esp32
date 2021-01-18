@@ -1,4 +1,5 @@
 Автор: Приходько Дмитрий
+[asketcnc@yandex.ru](mailto:asketcnc@yandex.ru)
 
 # Компоненты ESP32
 * [httprequest](#httprequest)
@@ -89,10 +90,19 @@ if(card->initSpi(GPIO_NUM_19, GPIO_NUM_23, GPIO_NUM_18, GPIO_NUM_5)){
 
 ```cpp
 ShiftLoad sl;
+// работа по SPI
 sl.initSpi(GPIO_NUM_12, GPIO_NUM_13, GPIO_NUM_14, GPIO_NUM_15);
 sl.registerCount(1);
 sl.write(0, 0xBB);
 sl.writeByNum(0, 2, true);
+
+...
+
+ShiftLoad sl;
+// работа по задаче
+sl.initTask(GPIO_NUM_21, GPIO_NUM_22, GPIO_NUM_15);
+sl.registerCount(1);
+sl.write(0, 0x31);
 ```
 
 ## wifi
