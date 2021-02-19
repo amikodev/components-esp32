@@ -18,7 +18,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#include "sdcard.hpp"
+#include "sdcard-storage.hpp"
 
 /**
  * Инициализация SPI
@@ -28,7 +28,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
  * @param cs пин CS
  * @return bool успешность определения доступа к карте памяти
  */
-bool SdCard::initSpi(gpio_num_t miso, gpio_num_t mosi, gpio_num_t sclk, gpio_num_t cs){
+bool SdCardStorage::initSpi(gpio_num_t miso, gpio_num_t mosi, gpio_num_t sclk, gpio_num_t cs){
 
     printf("SdCard::initSpi \n");
 
@@ -82,14 +82,14 @@ bool SdCard::initSpi(gpio_num_t miso, gpio_num_t mosi, gpio_num_t sclk, gpio_num
  * Установка точки монтирования
  * @param mountPoint точка мантирования
  */
-void SdCard::setMountPoint(char* mountPoint){
+void SdCardStorage::setMountPoint(char* mountPoint){
     mPoint = mountPoint;
 }
 
 /**
  * Размонтирование файловой системы
  */
-void SdCard::unmount(){
+void SdCardStorage::unmount(){
     esp_vfs_fat_sdmmc_unmount();
     printf("SdCard : card unmounted\n");
 }
@@ -98,7 +98,7 @@ void SdCard::unmount(){
  * Получение информации о карте памяти
  * @return sdmmc_card_t* SD/MMC card information structure
  */
-sdmmc_card_t* SdCard::getCardInfo(){
+sdmmc_card_t* SdCardStorage::getCardInfo(){
     return card;
 }
 

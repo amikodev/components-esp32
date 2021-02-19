@@ -49,14 +49,28 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "httpresponce.hpp"
 
 #if CONFIG_AMIKODEV_WIFI_SD_CARD
-#include "sdcard.hpp"
+#include "sdcard-storage.hpp"
 #endif
+
+#if CONFIG_AMIKODEV_WIFI_SPIFFS
+#include "spiffs-storage.hpp"
+#endif
+
 
 /**
  * WiFi
  * @author Приходько Д. Г.
  */
 class Wifi{
+
+public:
+
+    enum STORAGE_TYPE{
+        STORAGE_NONE = 0,
+        STORAGE_EMBED,
+        STORAGE_SDCARD,
+        STORAGE_SPIFFS
+    };
 
 private:
     static QueueHandle_t clientQueue;
@@ -68,7 +82,11 @@ private:
     static char *hostname;
 
 #if CONFIG_AMIKODEV_WIFI_SD_CARD
-    static SdCard *sdCard;
+    static SdCardStorage *sdCard;
+#endif
+
+#if CONFIG_AMIKODEV_WIFI_SPIFFS
+    static SpiffsStorage *spiffs;
 #endif
 
 public:
@@ -137,8 +155,17 @@ public:
      * Установка карты памяти SdCard
      * @param card карта памяти
      */
-    static void setSdCard(SdCard *card);
+    static void setSdCard(SdCardStorage *card);
 #endif
+
+#if CONFIG_AMIKODEV_WIFI_SPIFFS
+    /**
+     * Установка хранилища spiffs
+     * @param storage хранилище
+     */
+    static void setSpiffs(SpiffsStorage *storage);
+#endif
+
 
 };
 

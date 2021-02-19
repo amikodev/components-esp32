@@ -54,5 +54,10 @@ config AMIKODEV_WIFI_SD_CARD
     help
         SD card enabled
 
+config AMIKODEV_WIFI_SPIFFS
+    bool "Spiffs"
+    help
+        Spiffs enabled
+
 endmenu
 

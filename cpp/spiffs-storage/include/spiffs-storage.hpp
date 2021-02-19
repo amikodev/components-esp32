@@ -1,6 +1,6 @@
 /*
 amikodev/components-esp32 - library components on esp-idf
-Copyright © 2020 Prihodko Dmitriy - asketcnc@yandex.ru
+Copyright © 2020-2021 Prihodko Dmitriy - asketcnc@yandex.ru
 */
 
 /*
@@ -18,34 +18,40 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#ifndef __HTTP_RESPONCE_HPP__
-#define __HTTP_RESPONCE_HPP__
+#ifndef __SPIFFS_HPP__
+#define __SPIFFS_HPP__
 
-#include "httprequest.hpp"
+#include <iostream>
+#include <cstring>
+#include <stdio.h>
+#include <string.h>
+
+#include "esp_log.h"
+#include "esp_spiffs.h"
 
 /**
- * Формирование HTTP-ответа
+ * SPIFFS
  */
-class HttpResponce{
+class SpiffsStorage{
+public:
 
 private:
+
+    char *basePath;     // базовый путь
 
 public:
 
-    const static char *HTML_HEADER;
-    const static char *ERROR_HEADER;
-    const static char *JS_HEADER;
-    const static char *CSS_HEADER;
-    const static char *ICO_HEADER;
+    /**
+     * Инициализация
+     * @param base базовый путь
+     */
+    bool init(char *base);
 
     /**
-     * Получение заголовка для вывода файла
-     * @param ext расширение файла
+     * Получение базового пути
      */
-    static char* getHeaderByFileExtension(HttpRequest::HttpRequestFileExtension ext);
-
-private:
+    const char* getBasePath();
 
 };
 
-#endif      // __HTTP_RESPONCE_HPP__
+#endif      // __SPIFFS_HPP__

@@ -50,8 +50,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "driver/sdmmc_host.h"
 #include "driver/sdmmc_types.h"
 
-
-class SdCard{
+/**
+ * SD card
+ */
+class SdCardStorage{
 
 private:
 

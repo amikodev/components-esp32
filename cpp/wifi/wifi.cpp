@@ -33,8 +33,13 @@ const char* Wifi::CSS_HEADER = "HTTP/1.1 200 OK\nContent-type: text/css\n\n";
 char* Wifi::hostname = NULL;
 
 #if CONFIG_AMIKODEV_WIFI_SD_CARD
-SdCard* Wifi::sdCard = NULL;
+SdCardStorage* Wifi::sdCard = NULL;
 #endif
+
+#if CONFIG_AMIKODEV_WIFI_SPIFFS
+SpiffsStorage* Wifi::spiffs = NULL;
+#endif
+
 
 // WifiBinFunc_t Wifi::recieveBinaryFunc;
 void (*Wifi::recieveBinaryFunc)(uint8_t *data, uint32_t length);
@@ -330,6 +335,24 @@ void Wifi::httpServe(struct netconn *conn){
     static uint16_t buflen;
     static err_t err;
 
+    STORAGE_TYPE storageType = STORAGE_EMBED;
+    std::string basePath = "";
+
+
+#if CONFIG_AMIKODEV_WIFI_SD_CARD
+    if(sdCard != NULL){
+        storageType = STORAGE_SDCARD;
+        basePath = "/sdcard/frontend";
+    }
+#elif CONFIG_AMIKODEV_WIFI_SPIFFS
+    if(spiffs != NULL){
+        storageType = STORAGE_SPIFFS;
+        basePath = spiffs->getBasePath();
+        basePath.append("/web");
+    }
+#endif
+
+
     netconn_set_recvtimeout(conn, 1000); // allow a connection timeout of 1 second
     ESP_LOGI(TAG, "reading from client...");
     err = netconn_recv(conn, &inbuf);
@@ -338,8 +361,7 @@ void Wifi::httpServe(struct netconn *conn){
         netbuf_data(inbuf, (void**)&buf, &buflen);
         if(buf){
 
-#if CONFIG_AMIKODEV_WIFI_SD_CARD
-            if(sdCard != NULL){
+            if(storageType == STORAGE_SDCARD || storageType == STORAGE_SPIFFS){
                 // парсим http-запрос и
                 // получаем файл из файловой системы и отдаём клиенту
 
@@ -363,7 +385,7 @@ void Wifi::httpServe(struct netconn *conn){
                     } else if(info.method == HttpRequest::METHOD_GET){
                         // method GET
 
-                        std::string filePath = "/sdcard/frontend";
+                        std::string filePath = basePath; //"/sdcard/frontend";
                         filePath.append(info.path, info.cleanPathLength);
 
                         // printf("filePath: %s \n", filePath.c_str());
@@ -376,17 +398,25 @@ void Wifi::httpServe(struct netconn *conn){
                             fclose(f);
                         } else{
                             printf("Success open file \"%s\" \n", filePath.c_str());
-                            // printf("Read file: \n");
                             char *header = HttpResponce::getHeaderByFileExtension(info.fileExt);
                             if(header != NULL){
                                 netconn_write(conn, header, strlen(header), NETCONN_NOCOPY);
                             }
+
+                            fseek(f, 0, SEEK_END);
+                            long lSize = ftell(f);
+                            rewind(f);
+
+                            printf("File size: %ld \n", lSize);
+
                             char fbuf[1024];
-                            while(fgets(fbuf, 1024, f)){
-                                // printf("%s", fbuf);
-                                netconn_write(conn, fbuf, strlen(fbuf), NETCONN_NOCOPY);
+
+                            while(true){
+                                size_t s = fread(fbuf, 1, 1024, f);
+                                if(s == 0) break;
+                                // ESP_LOG_BUFFER_HEXDUMP(TAG, fbuf, s, ESP_LOG_INFO);
+                                netconn_write(conn, fbuf, s, NETCONN_NOCOPY);
                             }
-                            // printf("\n");
                             netconn_close(conn);
                             netconn_delete(conn);
                             fclose(f);
@@ -407,7 +437,81 @@ void Wifi::httpServe(struct netconn *conn){
 
 
             } else{
-#endif                
+
+            
+
+
+// #if CONFIG_AMIKODEV_WIFI_SD_CARD
+//             if(sdCard != NULL){
+//                 // парсим http-запрос и
+//                 // получаем файл из файловой системы и отдаём клиенту
+
+//                 HttpRequest request;
+//                 HttpRequest::HttpRequestInfo info;
+
+//                 bool requestParsed = request.parse(buf, buflen, &info);
+//                 // bool requestParsed = request.parse(str2, strlen(str2), &info);
+//                 if(requestParsed){
+//                     request.printInfo(&info);
+
+//                     std::string strHeaderUpgrade = request.getHeader("Upgrade");
+//                     int compareWs = strHeaderUpgrade.compare("websocket");
+//                     // printf("wifi : strHeaderUpgrade : %s, %d, %d \n", strHeaderUpgrade.c_str(), info.method == HttpRequest::METHOD_GET, compareWs);
+//                     if(info.method == HttpRequest::METHOD_GET && (compareWs == 0 || compareWs == 1)){
+//                         // is WebSocket
+//                         ESP_LOGI(TAG, " Requesting websocket on /");
+//                         printf("Request is WebSocket \n");
+//                         ws_server_add_client(conn, buf, buflen, "/", websocketCallback);
+//                         netbuf_delete(inbuf);
+//                     } else if(info.method == HttpRequest::METHOD_GET){
+//                         // method GET
+
+//                         std::string filePath = "/sdcard/frontend";
+//                         filePath.append(info.path, info.cleanPathLength);
+
+//                         // printf("filePath: %s \n", filePath.c_str());
+
+//                         FILE *f = fopen(filePath.c_str(), "rb");
+//                         if(f == NULL){
+//                             printf("ERROR: wrong open file \"%s\" \n", filePath.c_str());
+//                             netconn_close(conn);
+//                             netconn_delete(conn);
+//                             fclose(f);
+//                         } else{
+//                             printf("Success open file \"%s\" \n", filePath.c_str());
+//                             // printf("Read file: \n");
+//                             char *header = HttpResponce::getHeaderByFileExtension(info.fileExt);
+//                             if(header != NULL){
+//                                 netconn_write(conn, header, strlen(header), NETCONN_NOCOPY);
+//                             }
+//                             char fbuf[1024];
+//                             while(fgets(fbuf, 1024, f)){
+//                                 // printf("%s", fbuf);
+//                                 netconn_write(conn, fbuf, strlen(fbuf), NETCONN_NOCOPY);
+//                             }
+//                             // printf("\n");
+//                             netconn_close(conn);
+//                             netconn_delete(conn);
+//                             fclose(f);
+//                         }
+//                     } else if(info.method == HttpRequest::METHOD_POST){
+//                         // method POST
+
+//                     } else if(info.method == HttpRequest::METHOD_OPTIONS){
+//                         // method OPTIONS
+
+//                     }
+
+//                     free(info.path);
+//                 } else{
+//                     printf("Request not parsed \n");
+
+//                 }
+
+
+//             } else{
+// #endif          
+
                 // карта памяти не подключена,
                 // выполняется поведение по умолчанию
 
@@ -459,10 +563,10 @@ void Wifi::httpServe(struct netconn *conn){
                     netconn_delete(conn);
                     netbuf_delete(inbuf);
                 }
-                
-#if CONFIG_AMIKODEV_WIFI_SD_CARD
+                    
+// #if CONFIG_AMIKODEV_WIFI_SD_CARD
             }
-#endif
+// #endif
 
         }
         else {
@@ -575,8 +679,20 @@ void Wifi::setHostname(char *name){
  * Установка карты памяти SdCard
  * @param card карта памяти
  */
-void Wifi::setSdCard(SdCard *card){
+void Wifi::setSdCard(SdCardStorage *card){
     Wifi::sdCard = card;
 }
 #endif
+
+#if CONFIG_AMIKODEV_WIFI_SPIFFS
+/**
+ * Установка хранилища spiffs
+ * @param storage хранилище
+ */
+void Wifi::setSpiffs(SpiffsStorage *storage){
+    Wifi::spiffs = storage;
+}
+#endif
+
+
 

@@ -5,7 +5,8 @@
 * [httprequest](#httprequest)
 * [r8ef](#r8ef)
 * [relay](#relay)
-* [sdcard](#sdcard)
+* [sdcard-storage](#sdcard-storage)
+* [spiffs-storage](#spiffs-storage)
 * [shiftload](#shiftload)
 * [wifi](#wifi)
 
@@ -59,11 +60,11 @@ Relay *relay = new Relay(GPIO_NUM_15, GPIO_NUM_2, GPIO_NUM_4, GPIO_NUM_18, GPIO_
 relay->writeByNum(0, true);
 ```
 
-## sdcard
+## sdcard-storage
 Работа с SD-картой.
 
 ```cpp
-SdCard *card = new SdCard();
+SdCardStorage *card = new SdCardStorage();
 if(card->initSpi(GPIO_NUM_19, GPIO_NUM_23, GPIO_NUM_18, GPIO_NUM_5)){
     // sdmmc_card_t *cardInfo = card->getCardInfo();
     std::string filePath = "/sdcard/frontend";
@@ -76,12 +77,44 @@ if(card->initSpi(GPIO_NUM_19, GPIO_NUM_23, GPIO_NUM_18, GPIO_NUM_5)){
     } else{
         printf("Success open file \"%s\" \n", filePath.c_str());
         char fbuf[1024];
+        // fgets - получение текстовых данных до первого байта со значением 0x00
         while(fgets(fbuf, 1024, f)){
             // printf("%s", fbuf);
             netconn_write(conn, fbuf, strlen(fbuf), NETCONN_NOCOPY);
         }
     }
     card->unmount();
+}
+```
+
+## spiffs-storage
+Работа с хранилищем во flash-памяти.
+
+```cpp
+SpiffsStorage *spiffs = new SpiffsStorage();
+if(spiffs->init((char *)"/spiffs")){
+    std::string filePath = "/spiffs/web";
+    filePath.append("/index.html", 11);
+
+    FILE *f = fopen(filePath.c_str(), "rb");
+    if(f == NULL){
+        printf("ERROR: wrong open file \"%s\" \n", filePath.c_str());
+        // ...
+    } else{
+        printf("Success open file \"%s\" \n", filePath.c_str());
+
+        fseek(f, 0, SEEK_END);
+        long lSize = ftell(f);
+        rewind(f);
+        printf("File size: %ld \n", lSize);
+
+        char fbuf[1024];
+        while(true){
+            size_t s = fread(fbuf, 1, 1024, f);
+            if(s == 0) break;
+            netconn_write(conn, fbuf, s, NETCONN_NOCOPY);
+        }
+    }
 }
 ```
 
@@ -113,10 +146,16 @@ Wifi wifi;
 wifi.setupAP();
 
 // при использовании SD-карты:
-SdCard *card = new SdCard();
+SdCardStorage *card = new SdCardStorage();
 if(card->initSpi(GPIO_NUM_19, GPIO_NUM_23, GPIO_NUM_18, GPIO_NUM_5)){
     // sdmmc_card_t *cardInfo = card->getCardInfo();
     Wifi::setSdCard(card);
+}
+
+// при использовании spiffs
+SpiffsStorage *spiffs = new SpiffsStorage();
+if(spiffs->init((char *)"/spiffs")){
+    Wifi::setSpiffs(spiffs);
 }
 
 ws_server_start();

@@ -22,10 +22,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 // #include "httprequest.hpp"
 
 
-const char* HttpResponce::HTML_HEADER = "HTTP/1.1 200 OK\nContent-type: text/html\n\n";
-const char* HttpResponce::ERROR_HEADER = "HTTP/1.1 404 Not Found\nContent-type: text/html\n\n";
-const char* HttpResponce::JS_HEADER = "HTTP/1.1 200 OK\nContent-type: text/javascript\n\n";
-const char* HttpResponce::CSS_HEADER = "HTTP/1.1 200 OK\nContent-type: text/css\n\n";
+const char* HttpResponce::HTML_HEADER = "HTTP/1.1 200 OK\nContent-Type: text/html\n\n";
+const char* HttpResponce::ERROR_HEADER = "HTTP/1.1 404 Not Found\nContent-Type: text/html\n\n";
+const char* HttpResponce::JS_HEADER = "HTTP/1.1 200 OK\nContent-Type: text/javascript\n\n";
+const char* HttpResponce::CSS_HEADER = "HTTP/1.1 200 OK\nContent-Type: text/css\n\n";
+// const char* HttpResponce::ICO_HEADER = "HTTP/1.1 200 OK\nContent-Type: image/x-icon\nContent-Encoding: gzip\n\n";
+const char* HttpResponce::ICO_HEADER = "HTTP/1.1 200 OK\nContent-Type: image/x-icon\n\n";
 
 /**
  * Получение заголовка для вывода файла
@@ -37,7 +39,9 @@ char* HttpResponce::getHeaderByFileExtension(HttpRequest::HttpRequestFileExtensi
         case HttpRequest::EXT_PNG:
         case HttpRequest::EXT_JPG:
         case HttpRequest::EXT_BMP:
+            break;
         case HttpRequest::EXT_ICO:
+            header = (char *)ICO_HEADER;
             break;
         case HttpRequest::EXT_HTML:
             header = (char *)HTML_HEADER;
@@ -49,7 +53,7 @@ char* HttpResponce::getHeaderByFileExtension(HttpRequest::HttpRequestFileExtensi
             header = (char *)CSS_HEADER;
             break;
         case HttpRequest::EXT_CPP:
-
+            break;
         default:
             break;
     }
