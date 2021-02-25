@@ -74,7 +74,6 @@ void Relay::setData(uint8_t data){
             }
         }
     }
-
 }
 
 /**
@@ -90,18 +89,13 @@ uint8_t Relay::getData(){
  * @param state статус (HIGH, LOW)
  */
 void Relay::writeByNum(uint8_t num, bool state){
-
-
     uint8_t data = relayData;
     if(state){
         data |= 1<<num;
     } else{
         data &= ~(1<<num);
     }
-
-    // printf("ShiftLoad::writeByNum ind: %d; load data: 0x%02x \n", ind, data);
     setData(data);
-
 }
 
 

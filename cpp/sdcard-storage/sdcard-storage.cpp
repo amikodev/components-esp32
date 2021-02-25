@@ -20,6 +20,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "sdcard-storage.hpp"
 
+#define TAG "SdCard"
+
 /**
  * Инициализация SPI
  * @param miso пин MISO
@@ -30,7 +32,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 bool SdCardStorage::initSpi(gpio_num_t miso, gpio_num_t mosi, gpio_num_t sclk, gpio_num_t cs){
 
-    printf("SdCard::initSpi \n");
+    ESP_LOGI(TAG, "initSpi");
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
@@ -60,13 +62,9 @@ bool SdCardStorage::initSpi(gpio_num_t miso, gpio_num_t mosi, gpio_num_t sclk, g
 
     if(ret != ESP_OK){
         if(ret == ESP_FAIL){
-            printf("SdCard ERROR: Failed to mount filesystem.\n");
-            // ESP_LOGE(TAG, "Failed to mount filesystem. "
-            //     "If you want the card to be formatted, set format_if_mount_failed = true.");
+            ESP_LOGW(TAG, "SdCard ERROR: Failed to mount filesystem.");
         } else{
-            printf("SdCard ERROR: Failed to initialize the card (%s)\nMake sure SD card lines have pull-up resistors in place. \n", esp_err_to_name(ret));
-            // ESP_LOGE(TAG, "Failed to initialize the card (%s). "
-            //     "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
+            ESP_LOGW(TAG, "SdCard ERROR: Failed to initialize the card (%s).\nMake sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
         }
         return false;
     }
@@ -91,7 +89,7 @@ void SdCardStorage::setMountPoint(char* mountPoint){
  */
 void SdCardStorage::unmount(){
     esp_vfs_fat_sdmmc_unmount();
-    printf("SdCard : card unmounted\n");
+    ESP_LOGI(TAG, "card unmounted");
 }
 
 /**

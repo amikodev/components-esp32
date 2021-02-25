@@ -20,6 +20,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "httprequest.hpp"
 
+#define TAG "HttpRequest"
+
 /**
  * Парсинг http-запроса
  * @param buf входящий запрос
@@ -32,7 +34,7 @@ bool HttpRequest::parse(char* buf, uint16_t buflen, HttpRequest::HttpRequestInfo
 
     // разбор строки "GET /index.html HTTP/1.1"
     char *ch1 = strchr(buf, ' ');
-    char *ch2 = NULL; //strrchr(str, ' ');
+    char *ch2 = NULL;
     if(ch1 != NULL){
         ch2 = strchr(ch1+1, ' ');
     }
@@ -45,7 +47,7 @@ bool HttpRequest::parse(char* buf, uint16_t buflen, HttpRequest::HttpRequestInfo
         } else if(memcmp(buf, "OPTIONS", 7) == 0){
             method = METHOD_OPTIONS;
         } else{
-            // printf("Req method is unknown \n");
+
         }
 
         if(method != METHOD_NONE){
@@ -64,10 +66,8 @@ bool HttpRequest::parse(char* buf, uint16_t buflen, HttpRequest::HttpRequestInfo
                 memcpy(strPath, ch1+1, pathLen);
             }
 
-            // *(strPath+ch2-ch1) = 0;
             strPath[pathLen] = '\0';
             info->path = strPath;
-            // printf("Request path: --%s-- \n", strPath);
 
             // получение чистого пути к файлу
             char *chSP = strchr(strPath, '?');
@@ -91,12 +91,7 @@ bool HttpRequest::parse(char* buf, uint16_t buflen, HttpRequest::HttpRequestInfo
                         ext = EXT_EMPTY;
                     }
                 } else{
-                    // ...
-                    // extLen = ch2-ch1-*chExt;
-                    // extLen = (ch2-ch1)-(chExt-ch1);
-                    // extLen = ch2-chExt-1;
                     extLen = pathLen - (chExt-strPath) - 1;
-                    // extLen -= chExt;
                 }
             }
 
@@ -111,7 +106,6 @@ bool HttpRequest::parse(char* buf, uint16_t buflen, HttpRequest::HttpRequestInfo
                 else if(memcmp(chExt+1, "cpp", extLen) == 0) ext = EXT_CPP;
             }
 
-            // printf("Request file extension: %d, length: %d \n", ext, extLen);
             info->fileExt = ext;
 
             if(ext != EXT_UNKNOWN){
@@ -121,31 +115,11 @@ bool HttpRequest::parse(char* buf, uint16_t buflen, HttpRequest::HttpRequestInfo
                     
                 } else{
                     // получаем файл из файловой системы и отдаём клиенту
-                    // if(cardSpiInited){
-                        // FILE *f = fopen("/sdcard");
-
-
-    // f = fopen("/sdcard/foo.txt", "r");
-    // if (f == NULL) {
-    //     ESP_LOGE(TAG, "Failed to open file for reading");
-    //     return;
-    // }
-    // char line[64];
-    // fgets(line, sizeof(line), f);
-    // fclose(f);
-
-
-                    // }
 
                 }
             }
 
-            // free(strPath);
-
-
             // разбор заголовков
-            // char *ch1 = strchr(buf, '\n');
-            // std::map <std::string*, std::string*> headers;
             char *chH = buf;
             char *chH2 = NULL;
             chH2 = strchr(chH, '\n');
@@ -154,7 +128,6 @@ bool HttpRequest::parse(char* buf, uint16_t buflen, HttpRequest::HttpRequestInfo
             }
 
             headers.clear();
-            // uint8_t count = 0;
             while(true){
                 chH2 = strchr(chH, '\n');
                 if(chH2 != NULL){
@@ -178,7 +151,7 @@ bool HttpRequest::parse(char* buf, uint16_t buflen, HttpRequest::HttpRequestInfo
         }
 
     } else{
-        // printf("Request not parsed \n");
+        ESP_LOGI(TAG, "Request not parsed");
     }
 
     return ret;
@@ -190,24 +163,24 @@ bool HttpRequest::parse(char* buf, uint16_t buflen, HttpRequest::HttpRequestInfo
  */
 void HttpRequest::printInfo(HttpRequest::HttpRequestInfo *info){
     if(!info->parsed){
-        printf("HttpRequest : request not parsed \n");
+        ESP_LOGI(TAG, "request not parsed");
         return;
     }
 
-    printf("HttpRequest : request info: \n");
-    printf(
+    ESP_LOGI(TAG, "request info:");
+    ESP_LOGI(TAG,
         "\tmethod: %d;\n\tfile extension: %d;\n\tpath: %s;\n\tclean path: %.*s;\n", 
         info->method, info->fileExt, info->path, info->cleanPathLength, info->path
     );
 
-    printf("HttpRequest : Headers: \n");
+    ESP_LOGI(TAG, "Headers:");
     // uint8_t i=0;
     // printf("headers map size: %d\n", headers.size());
     for(std::map<std::string, std::string>::iterator it=headers.begin(); it != headers.end(); ++it){
         // printf("\t%s=%s;\n", it->first->c_str(), it->second->c_str());
         std::string headerName = (std::string)it->first;
         std::string headerValue = (std::string)it->second;
-        printf("\t%s = %s\n", headerName.c_str(), headerValue.c_str());
+        ESP_LOGI(TAG, "\t%s = %s", headerName.c_str(), headerValue.c_str());
         // printf("%d\n", i++);
         // std::cout << &it->first << " = " << &it->second << '\n';
 

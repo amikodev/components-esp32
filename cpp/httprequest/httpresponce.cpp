@@ -26,7 +26,6 @@ const char* HttpResponce::HTML_HEADER = "HTTP/1.1 200 OK\nContent-Type: text/htm
 const char* HttpResponce::ERROR_HEADER = "HTTP/1.1 404 Not Found\nContent-Type: text/html\n\n";
 const char* HttpResponce::JS_HEADER = "HTTP/1.1 200 OK\nContent-Type: text/javascript\n\n";
 const char* HttpResponce::CSS_HEADER = "HTTP/1.1 200 OK\nContent-Type: text/css\n\n";
-// const char* HttpResponce::ICO_HEADER = "HTTP/1.1 200 OK\nContent-Type: image/x-icon\nContent-Encoding: gzip\n\n";
 const char* HttpResponce::ICO_HEADER = "HTTP/1.1 200 OK\nContent-Type: image/x-icon\n\n";
 
 /**

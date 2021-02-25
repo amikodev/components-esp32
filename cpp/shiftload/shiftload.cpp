@@ -20,6 +20,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "shiftload.hpp"
 
+#define TAG "ShiftLoad"
+
 esp_timer_handle_t ShiftLoad::timer = NULL;
 
 xQueueHandle ShiftLoad::taskEvtQueue = NULL;
@@ -33,7 +35,6 @@ xQueueHandle ShiftLoad::taskEvtQueue = NULL;
  * @param cs пин CS
  */
 void ShiftLoad::initSpi(gpio_num_t miso, gpio_num_t mosi, gpio_num_t sclk, gpio_num_t cs){
-
     workType = WT_SPI;
 
     esp_err_t ret;
@@ -62,7 +63,6 @@ void ShiftLoad::initSpi(gpio_num_t miso, gpio_num_t mosi, gpio_num_t sclk, gpio_
 
     ret = spi_bus_add_device(VSPI_HOST, &devCfg, &spi);
     assert(ret==ESP_OK);
-
 }
 
 /**
@@ -81,21 +81,9 @@ void ShiftLoad::initTimer(gpio_num_t dataPin, gpio_num_t latchPin, gpio_num_t cl
     _latchPin = latchPin;
     _clockPin = clockPin;
 
-    // uint64_t bitMask = 0;
-    // bitMask |= (1Ull << dataPin);
-    // bitMask |= (1Ull << latchPin);
-    // bitMask |= (1Ull << clockPin);
-
-    // gpio_config_t io_conf;
-    // io_conf.mode = GPIO_MODE_OUTPUT;
-    // io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
-    // io_conf.pin_bit_mask = bitMask;
-    // gpio_config(&io_conf);
-
     gpio_set_direction(_dataPin, GPIO_MODE_OUTPUT);
     gpio_set_direction(_latchPin, GPIO_MODE_OUTPUT);
     gpio_set_direction(_clockPin, GPIO_MODE_OUTPUT);
-
 }
 
 /**
@@ -193,19 +181,18 @@ void ShiftLoad::writeViaTimer(uint8_t ind, uint8_t data){
         .callback = &ShiftLoad::timerCallback,
         .arg = (void *)td,
         // .arg = (void *)&timerData,
+        .dispatch_method = ESP_TIMER_TASK,
         .name = "SL timer"
     };
 
     // esp_timer_handle_t timerActionRun;
     ESP_ERROR_CHECK(esp_timer_create(&timerArgs, &ShiftLoad::timer));
 
-    printf("ShiftLoad latch %d \n", 1);
+    ESP_LOGI(TAG, "latch %d", 1);
     gpio_set_level(_latchPin, 1);
 
-    printf("ShiftLoad start timer \n");
+    ESP_LOGI(TAG, "start timer");
     ESP_ERROR_CHECK(esp_timer_start_periodic(ShiftLoad::timer, 1));
-
-
 }
 
 /**
@@ -215,7 +202,6 @@ void ShiftLoad::writeViaTimer(uint8_t ind, uint8_t data){
  * @param data данные
  */
 void ShiftLoad::writeViaTask(uint8_t ind, uint8_t data){
-
     loadData[ind] = data;
 
     TaskData *td = taskData;
@@ -240,7 +226,6 @@ void ShiftLoad::writeTask(void *arg){
     for(;;){
         if(xQueueReceive(taskEvtQueue, td, portMAX_DELAY)){
             // устанавливаем защёлку
-            // printf("ShiftLoad latch %d [%llu] \n", 0, esp_timer_get_time());
             gpio_set_level(td->latchPin, 0x00);
 
             for(uint8_t i=0; i<td->count; i++){
@@ -249,7 +234,6 @@ void ShiftLoad::writeTask(void *arg){
 
                 for(uint8_t j=0; j<8; j++){
                     uint8_t level = (ld >> j) & 0x01;
-                    // printf("ShiftLoad data %d:%d \n", j, level);
                     gpio_set_level(td->dataPin, level);
 
                     // дёргание вывода таймера
@@ -269,7 +253,6 @@ void ShiftLoad::writeTask(void *arg){
             }
 
             // сбрасываем защёлку
-            // printf("ShiftLoad latch %d [%llu] \n", 1, esp_timer_get_time());
             gpio_set_level(td->latchPin, 0xFF);
             // задержка времени
             uint32_t us = 5;    // мкс
@@ -291,14 +274,14 @@ void ShiftLoad::writeTask(void *arg){
  */
 void ShiftLoad::write(uint8_t ind, uint8_t data){
     if(_count < 1){
-        printf("ShiftLoad ERROR: count of registers not registered \n");
+        ESP_LOGW(TAG, "ERROR: count of registers not registered");
         return;
     } else if(_count <= ind){
-        printf("ShiftLoad ERROR: count of registers below that current index \n");
+        ESP_LOGW(TAG, "ERROR: count of registers below that current index");
         return;
     }
 
-    printf("ShiftLoad::write ind: %d; load data: 0x%02x \n", ind, data);
+    ESP_LOGI(TAG, "write ind: %d; load data: 0x%02x", ind, data);
 
     if(workType == WT_SPI){
         writeViaSpi(ind, data);
@@ -316,9 +299,8 @@ void ShiftLoad::write(uint8_t ind, uint8_t data){
  * @param state статус (HIGH, LOW)
  */
 void ShiftLoad::writeByNum(uint8_t ind, uint8_t num, bool state){
-
     if(num == ShiftLoad::PIN_NOT_USED){
-        printf("ShiftLoad::writeByNum: pin not used \n");
+        ESP_LOGI(TAG, "writeByNum: pin not used");
         return;
     }
 
@@ -329,10 +311,8 @@ void ShiftLoad::writeByNum(uint8_t ind, uint8_t num, bool state){
         data &= ~(1<<num);
     }
 
-    printf("ShiftLoad::writeByNum ind: %d; load data: 0x%02x \n", ind, data);
-
+    ESP_LOGI(TAG, "writeByNum ind: %d; load data: 0x%02x", ind, data);
     write(ind, data);
-
 }
 
 /**
@@ -349,7 +329,7 @@ uint8_t ShiftLoad::getData(uint8_t ind){
  * @param inverse инверсия выводов
  */
 void ShiftLoad::setInverse(bool inverse){
-    printf("ShiftLoad::setInverse : %d \n", inverse);
+    ESP_LOGI(TAG, "setInverse : %d", inverse);
     isInverse = inverse;
 }
 /**
@@ -369,7 +349,7 @@ void ShiftLoad::stopTimer(){
         ESP_ERROR_CHECK(esp_timer_delete(timer));
         timer = NULL;
     }
-    printf("ShiftLoad stop timer \n");
+    ESP_LOGI(TAG, "stop timer");
 }
 
 /**
@@ -407,7 +387,6 @@ gpio_num_t ShiftLoad::getClockPin(){
     return _clockPin;
 }
 
-
 /**
  * Отправка данных по таймеру
  * @param arg параметры таймера
@@ -416,7 +395,7 @@ gpio_num_t ShiftLoad::getClockPin(){
 void ShiftLoad::timerCallback(void* arg){
     TimerData *td = (TimerData *)arg;
 
-    printf("ShiftLoad clock %d \n", 1);
+    ESP_LOGI(TAG, "clock %d", 1);
     gpio_set_level(td->shiftLoad->getClockPin(), 1);
 
     uint8_t *loadData = td->shiftLoad->getLoadData();
@@ -428,26 +407,19 @@ void ShiftLoad::timerCallback(void* arg){
     //     t.tx_data[_count-i-1] = ld;
     // }
 
-    // printf("ShiftLoad td pointer: %p \n", td);
-    // printf("ShiftLoad _cnt: %d, _count: %d \n", td->_cnt, td->_count);
-
-    // uint8_t ldInd = td->_cnt>>3;
     uint8_t bit = ( loadData[td->_cnt>>3] >> (td->_cnt%8) ) & 0x01;
-    // printf("ShiftLoad bit[%d]=%d \n", td->_cnt, bit);
 
-    printf("ShiftLoad data %d \n", bit);
+    ESP_LOGI(TAG, "data %d", bit);
     gpio_set_level(td->shiftLoad->getDataPin(), bit);
 
 
-    printf("ShiftLoad clock %d \n", 0);
+    ESP_LOGI(TAG, "clock %d", 0);
     gpio_set_level(td->shiftLoad->getClockPin(), 0);
 
     if(++td->_cnt >= count*8){
         stopTimer();
-        printf("ShiftLoad latch %d \n", 0);
+        ESP_LOGI(TAG, "latch %d", 0);
         gpio_set_level(td->shiftLoad->getLatchPin(), 0);
     }
-
-
 }
 

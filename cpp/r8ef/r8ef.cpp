@@ -20,6 +20,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "r8ef.hpp"
 
+#define TAG "R8EF"
+
 gpio_num_t R8EF::pwmChannelMap[8] = {GPIO_NUM_NC};
 int64_t R8EF::pwmst[8] = {0};
 int64_t R8EF::pwmsl[8] = {0};
@@ -94,11 +96,11 @@ void R8EF::setPwmPins(gpio_num_t chPin1, gpio_num_t chPin2, gpio_num_t chPin3, g
 void R8EF::startPwmTask(){
     // printf("address pwms (1): %p \n", pwms);
 
-    printf("pwm (1): ");
-    for(int i=0; i<8; i++){
-        printf("[%d] %lld; ", i, R8EF::pwms[i]);
-    }
-    printf("\n");
+    // printf("pwm (1): ");
+    // for(int i=0; i<8; i++){
+    //     printf("[%d] %lld; ", i, R8EF::pwms[i]);
+    // }
+    // printf("\n");
 
 
 
@@ -136,18 +138,8 @@ void R8EF::pwmTask(void* arg){
             }
 
             R8EF::pwmsl[pNum] = R8EF::pwms[pNum];
-
-
-            // printf("pwm (3): ");
-            // for(int i=0; i<8; i++){
-            //     printf("[%d] %lld; ", i, R8EF::pwms[i]);
-            // }
-            // printf("\n");
-
-            // vTaskDelay(pdMS_TO_TICKS(500));
         }
     }
-
 }
 
 /**

@@ -24,7 +24,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <string.h>
 
-
+#include "esp_log.h"
 #include "esp_timer.h"
 
 #include "freertos/FreeRTOS.h"
@@ -259,7 +259,6 @@ public:
      * Вывод таймера
      */
     gpio_num_t getClockPin();
-
 
     /**
      * Отправка данных по таймеру

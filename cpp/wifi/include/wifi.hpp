@@ -91,17 +91,6 @@ private:
 
 public:
 
-    const static char *HTML_HEADER;
-    const static char *ERROR_HEADER;
-    const static char *JS_HEADER;
-    const static char *CSS_HEADER;
-    // const static char HTML_HEADER[] = "HTTP/1.1 200 OK\nContent-type: text/html\n\n";
-    // const static char ERROR_HEADER[] = "HTTP/1.1 404 Not Found\nContent-type: text/html\n\n";
-    // const static char JS_HEADER[] = "HTTP/1.1 200 OK\nContent-type: text/javascript\n\n";
-    // const static char CSS_HEADER[] = "HTTP/1.1 200 OK\nContent-type: text/css\n\n";
-
-
-
     static void (*recieveBinaryFunc)(uint8_t *data, uint32_t length);
 
     static void (*apStaDisconnectFunc)();
@@ -109,14 +98,9 @@ public:
 
     static bool (*httpServeReqFunc)(struct netconn *conn, char *buf, uint32_t length);
 
-
-    // typedef void (*WifiBinFunc_t)(uint8_t *data, uint32_t length);
-    // static WifiBinFunc_t recieveBinaryFunc;
-
     void setup();
     void setupAP();
     void setupSTA();
-
 
     static esp_err_t eventHandler(void* ctx, system_event_t* event);
 
@@ -129,7 +113,6 @@ public:
     static void handler_error_html(struct netconn *conn, const char *header);
 
     static void httpServe(struct netconn *conn);
-    // static void httpServe2(struct netconn *conn);
     
     static void serverTask(void* pvParameters);
     
