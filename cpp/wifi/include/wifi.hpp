@@ -32,7 +32,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-// #include "tcpip_adapter.h"
 #include "esp_netif.h"
 
 #include "esp_system.h"
@@ -43,7 +42,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "string.h"
 
+#if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
 #include "websocket_server.h"
+#endif
 
 #include "httprequest.hpp"
 #include "httpresponce.hpp"
@@ -93,24 +94,22 @@ public:
 
     static void (*recieveBinaryFunc)(uint8_t *data, uint32_t length);
 
+    static void (*apStaConnectFunc)();
     static void (*apStaDisconnectFunc)();
-    static void (*wsDisconnectFunc)();
 
     static bool (*httpServeReqFunc)(struct netconn *conn, char *buf, uint32_t length);
 
     void setup();
-    void setupAP();
-    void setupSTA();
 
     static esp_err_t eventHandler(void* ctx, system_event_t* event);
 
-    static void websocketCallback(uint8_t num, WEBSOCKET_TYPE_t type, char* msg, uint64_t len);
-
+#if CONFIG_AMIKODEV_WIFI_INCLUDE_EMBED_WEB_FILES
     static void getResourceHandler(struct netconn *conn, const char *header, const uint8_t start[], const uint8_t end[]);
     static void handler_index_html(struct netconn *conn, const char *header);
     static void handler_style_css(struct netconn *conn, const char *header);
     static void handler_main_js(struct netconn *conn, const char *header);
     static void handler_error_html(struct netconn *conn, const char *header);
+#endif
 
     static void httpServe(struct netconn *conn);
     
@@ -118,12 +117,17 @@ public:
     
     static void serverHandleTask(void* pvParameters);
     
-    static void countTask(void* pvParameters);
-    
     void recieveBinary(void (*func)(uint8_t *data, uint32_t length));
 
+    void apStaConnect(void (*func)());
     void apStaDisconnect(void (*func)());
+
+#if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
+    static void (*wsDisconnectFunc)();
+    static void websocketCallback(uint8_t num, WEBSOCKET_TYPE_t type, char* msg, uint64_t len);
     void wsDisconnect(void (*func)());
+    static void countTask(void* pvParameters);
+#endif
 
     void httpServeReq(bool (*func)(struct netconn *conn, char *buf, uint32_t length));
 

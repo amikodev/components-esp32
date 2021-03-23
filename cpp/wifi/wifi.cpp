@@ -45,66 +45,54 @@ SpiffsStorage* Wifi::spiffs = NULL;
 
 // WifiBinFunc_t Wifi::recieveBinaryFunc;
 void (*Wifi::recieveBinaryFunc)(uint8_t *data, uint32_t length);
+void (*Wifi::apStaConnectFunc)();
 void (*Wifi::apStaDisconnectFunc)();
+
+#if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
 void (*Wifi::wsDisconnectFunc)();
+#endif
+
 bool (*Wifi::httpServeReqFunc)(struct netconn *conn, char *buf, uint32_t length);
 
 void Wifi::setup(){
+    ESP_LOGI(TAG, "Setup");
 
-    #if CONFIG_AMIKODEV_WIFI_AP_ENABLED
-    setupAP();
-    #endif
-
-    #if CONFIG_AMIKODEV_WIFI_STA_ENABLED
-    setupSTA();
-    #endif
-
-}
-
-void Wifi::setupSTA(){
-
-}
-
-void Wifi::setupAP(){
     esp_err_t ret;
 
-    ESP_LOGI(TAG, "starting tcpip adapter");
     tcpip_adapter_init();
     nvs_flash_init();
     ESP_ERROR_CHECK(tcpip_adapter_dhcps_stop(TCPIP_ADAPTER_IF_AP));
-    //tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_AP,"esp32");
     tcpip_adapter_ip_info_t info;
     memset(&info, 0, sizeof(info));
     IP4_ADDR(&info.ip, 192, 168, 4, 1);
     IP4_ADDR(&info.gw, 192, 168, 4, 1);
-    // IP4_ADDR(&info.ip, 192, 168, 1, 17);
-    // IP4_ADDR(&info.gw, 192, 168, 1, 17);
     IP4_ADDR(&info.netmask, 255, 255, 255, 0);
-    ESP_LOGI(TAG, "setting gateway IP");
     ESP_ERROR_CHECK(tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_AP, &info));
-    //ESP_ERROR_CHECK(tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_AP,"esp32"));
-    //ESP_LOGI(TAG,"set hostname to \"%s\"",hostname);
-    ESP_LOGI(TAG, "starting DHCPS adapter");
     ESP_ERROR_CHECK(tcpip_adapter_dhcps_start(TCPIP_ADAPTER_IF_AP));
-    //ESP_ERROR_CHECK(tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_AP,hostname));
-    ESP_LOGI(TAG, "starting event loop");
     ESP_ERROR_CHECK(esp_event_loop_init(eventHandler, NULL));
 
-    ESP_LOGI(TAG, "initializing WiFi");
     wifi_init_config_t wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_config));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    // ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
 
+    wifi_mode_t mode = WIFI_MODE_NULL;
+    #if CONFIG_AMIKODEV_WIFI_AP_ENABLED && CONFIG_AMIKODEV_WIFI_STA_ENABLED
+        mode = WIFI_MODE_APSTA;
+    #elif CONFIG_AMIKODEV_WIFI_AP_ENABLED
+        mode = WIFI_MODE_AP;
+    #elif CONFIG_AMIKODEV_WIFI_STA_ENABLED
+        mode = WIFI_MODE_STA;
+    #endif
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(mode));
+
+
+    #if CONFIG_AMIKODEV_WIFI_AP_ENABLED
     #if CONFIG_AMIKODEV_WIFI_AP_HIDDEN
     uint8_t hidden = 1;
     #else
     uint8_t hidden = 0;
     #endif
-
-
-    #if CONFIG_AMIKODEV_WIFI_AP_ENABLED
     wifi_config_t wifiConfigAP = {
         .ap = {
             {.ssid = CONFIG_AMIKODEV_WIFI_AP_SSID},
@@ -152,6 +140,8 @@ void Wifi::setupAP(){
 // handles WiFi events
 esp_err_t Wifi::eventHandler(void* ctx, system_event_t* event){
     switch(event->event_id){
+
+        // STA
         case SYSTEM_EVENT_STA_START:
             staState = event->event_id;
             if(hostname != NULL)
@@ -164,12 +154,21 @@ esp_err_t Wifi::eventHandler(void* ctx, system_event_t* event){
         case SYSTEM_EVENT_STA_CONNECTED:
             ESP_LOGI(TAG_EVENT, "STA Connected");
             staState = event->event_id;
+            if(apStaConnectFunc != NULL){
+                ESP_LOGI(TAG_EVENT, "apStaConnectFunc is defined");
+                (*apStaConnectFunc)();
+            }
             break;
         case SYSTEM_EVENT_STA_DISCONNECTED:
             ESP_LOGI(TAG_EVENT, "STA Disconnected");
             staState = event->event_id;
+            if(apStaDisconnectFunc != NULL){
+                ESP_LOGI(TAG_EVENT, "apStaDisconnectFunc is defined");
+                (*apStaDisconnectFunc)();
+            }
             break;
 
+        // AP
         case SYSTEM_EVENT_AP_START:
             ESP_LOGI(TAG_EVENT, "Access Point Started");
             apState = event->event_id;
@@ -178,6 +177,12 @@ esp_err_t Wifi::eventHandler(void* ctx, system_event_t* event){
             ESP_LOGI(TAG_EVENT, "Access Point Stopped");
             apState = event->event_id;
             break;
+        case SYSTEM_EVENT_AP_PROBEREQRECVED:
+            ESP_LOGI(TAG_EVENT, "AP Probe Received");
+            apState = event->event_id;
+            break;
+
+        // AP_STA
         case SYSTEM_EVENT_AP_STACONNECTED:
             ESP_LOGI(TAG_EVENT, "STA Connected, MAC=%02x:%02x:%02x:%02x:%02x:%02x AID=%i",
                 event->event_info.sta_connected.mac[0], event->event_info.sta_connected.mac[1],
@@ -186,6 +191,10 @@ esp_err_t Wifi::eventHandler(void* ctx, system_event_t* event){
                 event->event_info.sta_connected.aid
             );
             apState = event->event_id;
+            if(apStaConnectFunc != NULL){
+                ESP_LOGI(TAG_EVENT, "apStaConnectFunc is defined");
+                (*apStaConnectFunc)();
+            }
             break;
         case SYSTEM_EVENT_AP_STADISCONNECTED:
             ESP_LOGI(TAG_EVENT, "STA Disconnected, MAC=%02x:%02x:%02x:%02x:%02x:%02x AID=%i",
@@ -195,15 +204,10 @@ esp_err_t Wifi::eventHandler(void* ctx, system_event_t* event){
                 event->event_info.sta_disconnected.aid
             );
             apState = event->event_id;
-
             if(apStaDisconnectFunc != NULL){
                 ESP_LOGI(TAG_EVENT, "apStaDisconnectFunc is defined");
                 (*apStaDisconnectFunc)();
             }
-            break;
-        case SYSTEM_EVENT_AP_PROBEREQRECVED:
-            ESP_LOGI(TAG_EVENT, "AP Probe Received");
-            apState = event->event_id;
             break;
         // case SYSTEM_EVENT_STA_GOT_IP6:
         case SYSTEM_EVENT_AP_STA_GOT_IP6:
@@ -222,6 +226,7 @@ esp_err_t Wifi::eventHandler(void* ctx, system_event_t* event){
 }
 
 
+#if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
 // handles websocket events
 void Wifi::websocketCallback(uint8_t num, WEBSOCKET_TYPE_t type, char* msg, uint64_t len){
     switch(type) {
@@ -271,8 +276,9 @@ void Wifi::websocketCallback(uint8_t num, WEBSOCKET_TYPE_t type, char* msg, uint
             break;
     }
 }
+#endif
 
-
+#if CONFIG_AMIKODEV_WIFI_INCLUDE_EMBED_WEB_FILES
 void Wifi::getResourceHandler(struct netconn *conn, const char *header, const uint8_t start[], const uint8_t end[]){
     const uint32_t len = end - start -1;
     netconn_write(conn, header, strlen(header), NETCONN_NOCOPY);
@@ -300,6 +306,7 @@ void Wifi::handler_error_html(struct netconn *conn, const char *header){
     extern const uint8_t end[]   asm("_binary_error_html_end");
     getResourceHandler(conn, header, start, end);
 }
+#endif
 
 
 // serves any clients
@@ -350,9 +357,11 @@ void Wifi::httpServe(struct netconn *conn){
                     int compareWs = strHeaderUpgrade.compare("websocket");
                     if(info.method == HttpRequest::METHOD_GET && (compareWs == 0 || compareWs == 1)){
                         // is WebSocket
-                        ESP_LOGI(TAG_HTTP, "Requesting websocket on /");
-                        ESP_LOGI(TAG_HTTP, "Request is WebSocket");
-                        ws_server_add_client(conn, buf, buflen, "/", websocketCallback);
+                        #if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
+                            ESP_LOGI(TAG_HTTP, "Requesting websocket on /");
+                            ESP_LOGI(TAG_HTTP, "Request is WebSocket");
+                            ws_server_add_client(conn, buf, buflen, "/", websocketCallback);
+                        #endif
                         netbuf_delete(inbuf);
                     } else if(info.method == HttpRequest::METHOD_GET){
                         // method GET
@@ -409,33 +418,34 @@ void Wifi::httpServe(struct netconn *conn){
                 // карта памяти не подключена,
                 // выполняется поведение по умолчанию
 
-                // default page
-                if(strstr(buf, "GET / ")
-                        && !strstr(buf, "Upgrade: websocket")) {
+                // websocket
+                if(strstr(buf, "GET / ") && strstr(buf, "Upgrade: websocket")) {
+                    #if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
+                        ESP_LOGI(TAG_HTTP, "Requesting websocket on /");
+                        ws_server_add_client(conn, buf, buflen, "/", websocketCallback);
+                    #endif
+                }
+
+#if CONFIG_AMIKODEV_WIFI_INCLUDE_EMBED_WEB_FILES
+                // index.html
+                else if(strstr(buf, "GET / ") && !strstr(buf, "Upgrade: websocket")) {
                     ESP_LOGI(TAG_HTTP, "Sending /");
                     handler_index_html(conn, HttpResponce::HTML_HEADER);
                     netbuf_delete(inbuf);
                 }
-
-                // default page websocket
-                else if(strstr(buf, "GET / ")
-                        && strstr(buf, "Upgrade: websocket")) {
-                    ESP_LOGI(TAG_HTTP, "Requesting websocket on /");
-                    ws_server_add_client(conn, buf, buflen, "/", websocketCallback);
-                    netbuf_delete(inbuf);
-                }
-
+                // style.css
                 else if(strstr(buf, "GET /style.css ")) {
                     ESP_LOGI(TAG_HTTP, "Sending /style.css");
                     handler_style_css(conn, HttpResponce::CSS_HEADER);
                     netbuf_delete(inbuf);
                 }
-
+                // main.js
                 else if(strstr(buf, "GET /main.js ")) {
                     ESP_LOGI(TAG_HTTP, "Sending /main.js");
                     handler_main_js(conn, HttpResponce::JS_HEADER);
                     netbuf_delete(inbuf);
                 }
+#endif
 
                 else if(strstr(buf, "GET /")) {
                     bool retReq = false;
@@ -446,7 +456,9 @@ void Wifi::httpServe(struct netconn *conn){
                         netbuf_delete(inbuf);
                     } else{
                         ESP_LOGI(TAG_HTTP, "Unknown request, sending error page: %s", buf);
+#if CONFIG_AMIKODEV_WIFI_INCLUDE_EMBED_WEB_FILES
                         handler_error_html(conn, HttpResponce::ERROR_HEADER);
+#endif
                         netbuf_delete(inbuf);
                     }
                 }
@@ -511,6 +523,7 @@ void Wifi::serverHandleTask(void* pvParameters){
     vTaskDelete(NULL);
 }
 
+#if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
 void Wifi::countTask(void* pvParameters){
     char out[20];
     int len;
@@ -530,19 +543,25 @@ void Wifi::countTask(void* pvParameters){
         vTaskDelay(DELAY);
     }
 }
-
+#endif
 
 void Wifi::recieveBinary(void (*func)(uint8_t *data, uint32_t length)){
     Wifi::recieveBinaryFunc = func;
+}
+
+void Wifi::apStaConnect(void (*func)()){
+    Wifi::apStaConnectFunc = func;
 }
 
 void Wifi::apStaDisconnect(void (*func)()){
     Wifi::apStaDisconnectFunc = func;
 }
 
+#if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
 void Wifi::wsDisconnect(void (*func)()){
     Wifi::wsDisconnectFunc = func;
 }
+#endif
 
 void Wifi::httpServeReq(bool (*func)(struct netconn *conn, char *buf, uint32_t length)){
     Wifi::httpServeReqFunc = func;

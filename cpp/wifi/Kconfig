@@ -37,25 +37,37 @@ config AMIKODEV_WIFI_STA_ENABLED
 
 config AMIKODEV_WIFI_STA_SSID
     string "STA SSID"
-#    default "Amikodev_ESP32-AP"
     depends on AMIKODEV_WIFI_STA_ENABLED
     help
         STA SSID
 
 config AMIKODEV_WIFI_STA_PSSWD
     string "STA PSSWD"
-#    default "12345678"
     depends on AMIKODEV_WIFI_STA_ENABLED
     help
         STA PSSWD
 
+config AMIKODEV_WIFI_USE_WEBSOCKET
+    bool "Use Websocket"
+    default true
+    help
+        Use Websocket connections
+
+config AMIKODEV_WIFI_INCLUDE_EMBED_WEB_FILES
+    bool "Include embed web files"
+    default false
+    help
+        Include embed web files
+
 config AMIKODEV_WIFI_SD_CARD
     bool "SD card"
+    default false
     help
         SD card enabled
 
 config AMIKODEV_WIFI_SPIFFS
     bool "Spiffs"
+    default false
     help
         Spiffs enabled
 
