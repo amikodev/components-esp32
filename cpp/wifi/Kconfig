@@ -71,5 +71,11 @@ config AMIKODEV_WIFI_SPIFFS
     help
         Spiffs enabled
 
+config AMIKODEV_WIFI_NVS_FLASH
+    bool "NVS flash"
+    default false
+    help
+        NVS flash enable
+
 endmenu
 

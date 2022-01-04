@@ -1,6 +1,6 @@
 /*
 amikodev/components-esp32 - library components on esp-idf
-Copyright © 2020 Prihodko Dmitriy - asketcnc@yandex.ru
+Copyright © 2020-2022 Prihodko Dmitriy - asketcnc@yandex.ru
 */
 
 /*
@@ -33,6 +33,7 @@ system_event_id_t Wifi::staState = SYSTEM_EVENT_STA_STOP;
 system_event_id_t Wifi::apState = SYSTEM_EVENT_AP_STOP;
 
 char* Wifi::hostname = NULL;
+bool Wifi::connected = false;
 
 #if CONFIG_AMIKODEV_WIFI_SD_CARD
 SdCardStorage* Wifi::sdCard = NULL;
@@ -43,13 +44,27 @@ SpiffsStorage* Wifi::spiffs = NULL;
 #endif
 
 
-// WifiBinFunc_t Wifi::recieveBinaryFunc;
+const uint8_t Wifi::WS_OBJ_NAME_WIFI = 0x20;
+
+const uint8_t Wifi::WS_WIFI_SETTINGS = 0x01;
+const uint8_t Wifi::WS_WIFI_SCAN = 0x02;
+
+const uint8_t Wifi::WS_CMD_READ = 0x01;
+const uint8_t Wifi::WS_CMD_WRITE = 0x02;
+
+const uint8_t Wifi::WS_WIFI_MODE_STA = 0x01;
+const uint8_t Wifi::WS_WIFI_MODE_AP = 0x02;
+
+
 void (*Wifi::recieveBinaryFunc)(uint8_t *data, uint32_t length);
 void (*Wifi::apStaConnectFunc)();
 void (*Wifi::apStaDisconnectFunc)();
+void (*Wifi::scanFunc)();
 
 #if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
 void (*Wifi::wsDisconnectFunc)();
+
+xQueueHandle Wifi::wsSendCustomEvtQueue = NULL;
 #endif
 
 bool (*Wifi::httpServeReqFunc)(struct netconn *conn, char *buf, uint32_t length);
@@ -58,6 +73,9 @@ void Wifi::setup(){
     ESP_LOGI(TAG, "Setup");
 
     esp_err_t ret;
+
+    // wifi работает только при настроенных параметрах (menuconfig)
+    #if CONFIG_AMIKODEV_WIFI_AP_ENABLED || CONFIG_AMIKODEV_WIFI_STA_ENABLED
 
     tcpip_adapter_init();
     nvs_flash_init();
@@ -69,23 +87,66 @@ void Wifi::setup(){
     IP4_ADDR(&info.netmask, 255, 255, 255, 0);
     ESP_ERROR_CHECK(tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_AP, &info));
     ESP_ERROR_CHECK(tcpip_adapter_dhcps_start(TCPIP_ADAPTER_IF_AP));
-    ESP_ERROR_CHECK(esp_event_loop_init(eventHandler, NULL));
+
+    ESP_ERROR_CHECK(esp_event_loop_init(NULL, NULL));
 
     wifi_init_config_t wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_config));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
 
-    wifi_mode_t mode = WIFI_MODE_NULL;
-    #if CONFIG_AMIKODEV_WIFI_AP_ENABLED && CONFIG_AMIKODEV_WIFI_STA_ENABLED
-        mode = WIFI_MODE_APSTA;
-    #elif CONFIG_AMIKODEV_WIFI_AP_ENABLED
-        mode = WIFI_MODE_AP;
-    #elif CONFIG_AMIKODEV_WIFI_STA_ENABLED
-        mode = WIFI_MODE_STA;
+    connectSystemSta();
+
+        #if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
+            // очередь и задача по отправке данных произвольного размера клиенту
+            Wifi::wsSendCustomEvtQueue = xQueueCreate(10, sizeof(WsData));
+            xTaskCreate(Wifi::wsSendCustomTask, "wifiWsSendCustomTask", 2048, NULL, 10, NULL);
+        #endif    
+
+    #elif
+
+    ESP_LOGI(TAG, "WiFi turned off");
+
     #endif
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(mode));
+}
 
+/**
+ * Подключение к точке доступа из параметров компиляции (menuconfig)
+ */
+void Wifi::connectSystemSta(){
+
+    esp_err_t ret;
+
+    #if CONFIG_AMIKODEV_WIFI_STA_ENABLED
+
+    esp_event_loop_set_cb(systemStaEventHandler, (void *) this);
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+
+    wifi_config_t wifiConfigSTA = {
+        .sta = {
+            {.ssid = CONFIG_AMIKODEV_WIFI_STA_SSID},
+            {.password = CONFIG_AMIKODEV_WIFI_STA_PSSWD},
+        },
+    };
+    ret = esp_wifi_set_config(WIFI_IF_STA, &wifiConfigSTA);
+    if(ret != ESP_OK){
+        ESP_LOGI(TAG, "WiFi system STA set config ERROR: [%d] %s", ret, esp_err_to_name(ret));
+    }
+    ESP_LOGI(TAG, "WiFi system STA set config");
+
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    #endif
+
+}
+
+/**
+ * Создание точки доступа по параметрам компиляции (menuconfig)
+ */
+void Wifi::connectSystemAp(){
+
+    esp_err_t ret;
 
     #if CONFIG_AMIKODEV_WIFI_AP_ENABLED
     #if CONFIG_AMIKODEV_WIFI_AP_HIDDEN
@@ -93,6 +154,11 @@ void Wifi::setup(){
     #else
     uint8_t hidden = 0;
     #endif
+
+    esp_event_loop_set_cb(systemApEventHandler, (void *) this);
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+
     wifi_config_t wifiConfigAP = {
         .ap = {
             {.ssid = CONFIG_AMIKODEV_WIFI_AP_SSID},
@@ -104,126 +170,199 @@ void Wifi::setup(){
             .beacon_interval = 100
         },
     };
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifiConfigAP));
-    ESP_LOGI(TAG, "WiFi AP set config");
-    #endif
-
-
-    #if CONFIG_AMIKODEV_WIFI_STA_ENABLED
-    wifi_config_t wifiConfigSTA = {
-        .sta = {
-            {.ssid = CONFIG_AMIKODEV_WIFI_STA_SSID},
-            {.password = CONFIG_AMIKODEV_WIFI_STA_PSSWD},
-
-        },
-    };
-    ret = esp_wifi_set_config(WIFI_IF_STA, &wifiConfigSTA);
+    ret = esp_wifi_set_config(WIFI_IF_AP, &wifiConfigAP);
     if(ret != ESP_OK){
-        ESP_LOGI(TAG, "WiFi STA set config ERROR: [%d] %s", ret, esp_err_to_name(ret));
+        ESP_LOGI(TAG, "WiFi system AP set config ERROR: [%d] %s", ret, esp_err_to_name(ret));
     }
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifiConfigSTA));
-    ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "WiFi STA set config");
+    ESP_LOGI(TAG, "WiFi system AP set config");
+
+    ESP_ERROR_CHECK(esp_wifi_start());
+
     #endif
 
+}
 
-    #if CONFIG_AMIKODEV_WIFI_AP_ENABLED || CONFIG_AMIKODEV_WIFI_STA_ENABLED
-    ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_LOGI(TAG, "WiFi set up");
+/**
+ * Подключение к точке доступа или создание новой из полльзовательских параметров
+ */
+void Wifi::connectUserSettingsApSta(){
+
+    esp_err_t ret;
+
+    #if CONFIG_AMIKODEV_WIFI_NVS_FLASH
+
+    if(NvsStorage::isInited()){
+        char *wifiMode = NULL;
+        char *wifiSsid = NULL;
+        char *wifiPassword = NULL;
+
+        NvsStorage::open();
+        try{
+            wifiMode = NvsStorage::getStr((char *) "wifi_mode");
+            wifiSsid = NvsStorage::getStr("wifi_ssid");
+            wifiPassword = NvsStorage::getStr("wifi_password");
+        } catch(const std::runtime_error &error){}
+        NvsStorage::close();
+
+        if(wifiMode != NULL && wifiSsid != NULL && wifiPassword != NULL){
+            esp_event_loop_set_cb(userSettingsApStaEventHandler, (void *) this);
+
+            if(strcmp(wifiMode, "AP") == 0){
+
+                ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+
+                wifi_config_t wifiConfigAP = {
+                    .ap = {
+                        .ssid = {0},
+                        .password = {0},
+                        .channel = 0,
+                        .authmode = WIFI_AUTH_WPA2_PSK,
+                        .ssid_hidden = false,
+                        .max_connection = 4,
+                        .beacon_interval = 100
+                    },
+                };
+                strncpy((char *)wifiConfigAP.ap.ssid, wifiSsid, 32);
+                strncpy((char *)wifiConfigAP.ap.password, wifiPassword, 64);
+
+                ret = esp_wifi_set_config(WIFI_IF_AP, &wifiConfigAP);
+                if(ret != ESP_OK){
+                    ESP_LOGI(TAG, "WiFi user settings AP set config ERROR: [%d] %s", ret, esp_err_to_name(ret));
+                }
+                ESP_LOGI(TAG, "WiFi user settings AP set config");
+
+            } else if(strcmp(wifiMode, "STA") == 0){
+
+                ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+
+                wifi_config_t wifiConfigSTA = {
+                    .sta = {
+                        .ssid = {0},
+                        .password = {0},
+                    },
+                };
+                strncpy((char *)wifiConfigSTA.sta.ssid, wifiSsid, 32);
+                strncpy((char *)wifiConfigSTA.sta.password, wifiPassword, 64);
+                ret = esp_wifi_set_config(WIFI_IF_STA, &wifiConfigSTA);
+                if(ret != ESP_OK){
+                    ESP_LOGI(TAG, "WiFi user settings STA set config ERROR: [%d] %s", ret, esp_err_to_name(ret));
+                }
+                ESP_LOGI(TAG, "WiFi user settings STA set config");
+
+            }
+
+            ESP_ERROR_CHECK(esp_wifi_start());
+
+        } else{
+            ESP_LOGI(TAG, "Wifi nvs: read error");
+            connectSystemAp();
+        }
+    } else{
+        connectSystemAp();
+    }
+
     #else
-    ESP_LOGI(TAG, "WiFi turned off");
+
+    connectSystemAp();
+
     #endif
 
 }
 
 
-// handles WiFi events
-esp_err_t Wifi::eventHandler(void* ctx, system_event_t* event){
-    switch(event->event_id){
 
-        // STA
+esp_err_t Wifi::systemStaEventHandler(void* ctx, system_event_t* event){
+    ESP_LOGI(TAG_EVENT, "systemStaEventHandler Event 0x%X", event->event_id);
+
+    Wifi *wifi = (Wifi *)ctx;
+
+    switch(event->event_id){
         case SYSTEM_EVENT_STA_START:
-            staState = event->event_id;
             if(hostname != NULL)
                 ESP_ERROR_CHECK(tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_STA, hostname));
             esp_wifi_connect();
             break;
-        case SYSTEM_EVENT_STA_STOP:
-            staState = event->event_id;
-            break;
-        case SYSTEM_EVENT_STA_CONNECTED:
-            ESP_LOGI(TAG_EVENT, "STA Connected");
-            staState = event->event_id;
-            if(apStaConnectFunc != NULL){
-                ESP_LOGI(TAG_EVENT, "apStaConnectFunc is defined");
-                (*apStaConnectFunc)();
-            }
-            break;
         case SYSTEM_EVENT_STA_DISCONNECTED:
-            ESP_LOGI(TAG_EVENT, "STA Disconnected");
-            staState = event->event_id;
-            if(apStaDisconnectFunc != NULL){
-                ESP_LOGI(TAG_EVENT, "apStaDisconnectFunc is defined");
-                (*apStaDisconnectFunc)();
+            ESP_ERROR_CHECK(esp_wifi_stop());
+            if(connected){
+                connected = false;
+                if(apStaDisconnectFunc != NULL){
+                    (*apStaDisconnectFunc)();
+                }
             }
+            wifi->connectUserSettingsApSta();
             break;
-
-        // AP
-        case SYSTEM_EVENT_AP_START:
-            ESP_LOGI(TAG_EVENT, "Access Point Started");
-            apState = event->event_id;
-            break;
-        case SYSTEM_EVENT_AP_STOP:
-            ESP_LOGI(TAG_EVENT, "Access Point Stopped");
-            apState = event->event_id;
-            break;
-        case SYSTEM_EVENT_AP_PROBEREQRECVED:
-            ESP_LOGI(TAG_EVENT, "AP Probe Received");
-            apState = event->event_id;
-            break;
-
-        // AP_STA
         case SYSTEM_EVENT_AP_STACONNECTED:
-            ESP_LOGI(TAG_EVENT, "STA Connected, MAC=%02x:%02x:%02x:%02x:%02x:%02x AID=%i",
-                event->event_info.sta_connected.mac[0], event->event_info.sta_connected.mac[1],
-                event->event_info.sta_connected.mac[2], event->event_info.sta_connected.mac[3],
-                event->event_info.sta_connected.mac[4], event->event_info.sta_connected.mac[5],
-                event->event_info.sta_connected.aid
-            );
-            apState = event->event_id;
+            connected = true;
             if(apStaConnectFunc != NULL){
-                ESP_LOGI(TAG_EVENT, "apStaConnectFunc is defined");
                 (*apStaConnectFunc)();
             }
             break;
-        case SYSTEM_EVENT_AP_STADISCONNECTED:
-            ESP_LOGI(TAG_EVENT, "STA Disconnected, MAC=%02x:%02x:%02x:%02x:%02x:%02x AID=%i",
-                event->event_info.sta_disconnected.mac[0], event->event_info.sta_disconnected.mac[1],
-                event->event_info.sta_disconnected.mac[2], event->event_info.sta_disconnected.mac[3],
-                event->event_info.sta_disconnected.mac[4], event->event_info.sta_disconnected.mac[5],
-                event->event_info.sta_disconnected.aid
-            );
-            apState = event->event_id;
-            if(apStaDisconnectFunc != NULL){
-                ESP_LOGI(TAG_EVENT, "apStaDisconnectFunc is defined");
-                (*apStaDisconnectFunc)();
-            }
-            break;
-        // case SYSTEM_EVENT_STA_GOT_IP6:
-        case SYSTEM_EVENT_AP_STA_GOT_IP6:
-            ESP_LOGI(TAG_EVENT, "Got IP6=%01x:%01x:%01x:%01x",
-                event->event_info.got_ip6.ip6_info.ip.addr[0], event->event_info.got_ip6.ip6_info.ip.addr[1],
-                event->event_info.got_ip6.ip6_info.ip.addr[2], event->event_info.got_ip6.ip6_info.ip.addr[3]
-            );
-            staState = event->event_id;
+        case SYSTEM_EVENT_SCAN_DONE:
+            // scanNetworksList(event);
             break;
         default:
-            ESP_LOGI(TAG_EVENT, "Unregistered event=%i", event->event_id);
             break;
     }
-    ESP_LOGI(TAG_EVENT, "Event 0x%X; staState: 0x%X; apState: 0x%X", event->event_id, staState, apState);
+
     return ESP_OK;
 }
+
+esp_err_t Wifi::systemApEventHandler(void* ctx, system_event_t* event){
+    ESP_LOGI(TAG_EVENT, "systemApEventHandler Event 0x%X", event->event_id);
+
+    Wifi *wifi = (Wifi *)ctx;
+
+    switch(event->event_id){
+        case SYSTEM_EVENT_AP_STACONNECTED:
+            if(apStaConnectFunc != NULL){
+                (*apStaConnectFunc)();
+            }
+            break;
+        case SYSTEM_EVENT_SCAN_DONE:
+            // scanNetworksList(event);
+            break;
+        default:
+            break;
+    }
+    return ESP_OK;
+}
+
+esp_err_t Wifi::userSettingsApStaEventHandler(void* ctx, system_event_t* event){
+    ESP_LOGI(TAG_EVENT, "userSettingsApStaEventHandler Event 0x%X", event->event_id);
+
+    Wifi *wifi = (Wifi *)ctx;
+
+    switch(event->event_id){
+        case SYSTEM_EVENT_STA_START:
+            if(hostname != NULL)
+                ESP_ERROR_CHECK(tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_STA, hostname));
+            esp_wifi_connect();
+            break;
+        case SYSTEM_EVENT_STA_DISCONNECTED:
+            if(connected){
+                connected = false;
+                if(apStaDisconnectFunc != NULL){
+                    (*apStaDisconnectFunc)();
+                }
+            }
+            wifi->connectSystemAp();
+            break;
+        case SYSTEM_EVENT_AP_STACONNECTED:
+            connected = true;
+            if(apStaConnectFunc != NULL){
+                (*apStaConnectFunc)();
+            }
+            break;
+        case SYSTEM_EVENT_SCAN_DONE:
+            // scanNetworksList(event);
+            break;
+        default:
+            break;
+    }
+    return ESP_OK;
+}
+
 
 
 #if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
@@ -261,11 +400,13 @@ void Wifi::websocketCallback(uint8_t num, WEBSOCKET_TYPE_t type, char* msg, uint
             break;
         case WEBSOCKET_BIN:
             ESP_LOGI(TAG_WS, "client %i sent binary message of size %i", num, (uint32_t)len);
-            if(recieveBinaryFunc != NULL){
-                ESP_LOGI(TAG_WS, "wifi_recieve_binary_func is defined");
-                (*recieveBinaryFunc)((uint8_t *)msg, (uint32_t)len);
-            } else{
-                ESP_LOGI(TAG_WS, "wifi_recieve_binary_func is NULL");
+            if(!websocketRecieveBinary((uint8_t *)msg, (uint32_t)len)){
+                if(recieveBinaryFunc != NULL){
+                    ESP_LOGI(TAG_WS, "wifi_recieve_binary_func is defined");
+                    (*recieveBinaryFunc)((uint8_t *)msg, (uint32_t)len);
+                } else{
+                    ESP_LOGI(TAG_WS, "wifi_recieve_binary_func is NULL");
+                }
             }
             break;
         case WEBSOCKET_PING:
@@ -545,6 +686,152 @@ void Wifi::countTask(void* pvParameters){
 }
 #endif
 
+
+#if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
+/**
+ * Обработка входящего сообщения
+ * @return bool флаг системного сообщения
+ */
+bool Wifi::websocketRecieveBinary(uint8_t *data, uint32_t length){
+
+    ESP_LOG_BUFFER_HEXDUMP(TAG, data, length, ESP_LOG_INFO);
+
+    #if CONFIG_AMIKODEV_WIFI_NVS_FLASH
+
+    if(length == 16){
+        if(*(data) == WS_OBJ_NAME_WIFI){
+
+            if(*(data+1) == WS_WIFI_SETTINGS){
+
+                uint8_t dataResp[16+32] = {0};
+                dataResp[0] = WS_OBJ_NAME_WIFI;
+                dataResp[1] = WS_WIFI_SETTINGS;
+                dataResp[2] = WS_CMD_READ;
+
+                if(*(data+2) == WS_CMD_READ){
+                    
+                    if(NvsStorage::isInited()){
+                        char *wifiMode = NULL;
+                        char *wifiSsid = NULL;
+                        char *wifiPassword = NULL;
+
+                        NvsStorage::open();
+                        try{
+                            wifiMode = NvsStorage::getStr((char *) "wifi_mode");
+                            wifiSsid = NvsStorage::getStr("wifi_ssid");
+                            wifiPassword = NvsStorage::getStr("wifi_password");
+                        } catch(const std::runtime_error &error){}
+                        NvsStorage::close();
+
+                        if(wifiMode != NULL && wifiSsid != NULL && wifiPassword != NULL){
+
+                            uint8_t mode = 0x00;
+                            if(strcmp(wifiMode, "AP") == 0){
+                                mode = WS_WIFI_MODE_AP;
+                            } else if(strcmp(wifiMode, "STA") == 0){
+                                mode = WS_WIFI_MODE_STA;
+                            }
+                            dataResp[3] = mode;
+
+                            // copy ssid to data responce
+                            strncpy((char *)(dataResp+16), wifiSsid, strnlen(wifiSsid, 32));
+
+                            static WsData wsData = {
+                                .size = 16+32,
+                                .ptr = malloc(16+32)
+                            };
+                            memcpy(wsData.ptr, &dataResp, wsData.size);
+
+                            xQueueGenericSend(wsSendCustomEvtQueue, (void *) &wsData, (TickType_t) 0, queueSEND_TO_BACK);
+                        }
+
+                    }
+
+                }
+
+            } else if(*(data+1) == WS_WIFI_SCAN){
+
+                // Wifi::scanNetworks(Wifi::sendScanListToWs);
+
+            }
+            return true;
+        }
+    } else if(length == 16+32+64){
+        if(*(data) == WS_OBJ_NAME_WIFI && *(data+1) == WS_WIFI_SETTINGS){
+
+            uint8_t dataResp[16+32] = {0};
+                dataResp[0] = WS_OBJ_NAME_WIFI;
+                dataResp[1] = WS_WIFI_SETTINGS;
+                dataResp[2] = WS_CMD_READ;
+
+            if(*(data+2) == WS_CMD_WRITE){
+                uint8_t mode = *(data+3);
+                char *wifiMode = (char *) "";
+                if(mode == WS_WIFI_MODE_STA){
+                    wifiMode = (char *) "STA";
+                } else if(mode == WS_WIFI_MODE_AP){
+                    wifiMode = (char *) "AP";
+                }
+
+                dataResp[3] = mode;
+
+                if(NvsStorage::isInited()){
+
+                    char *wifiSsid = (char *) malloc(32);
+                    char *wifiPassword = (char *) malloc(64);
+
+                    strncpy(wifiSsid, (char *)(data+16), 32);
+                    strncpy(wifiPassword, (char *)(data+16+32), 64);
+
+                    if(strlen(wifiPassword) > 0){
+                        ESP_LOGI(TAG, "Set ssid=%s; password=%s", wifiSsid, wifiPassword);
+
+                        NvsStorage::open();
+                        NvsStorage::setValue((char *) "wifi_mode", wifiMode);
+                        NvsStorage::setValue((char *) "wifi_ssid", wifiSsid);
+                        NvsStorage::setValue((char *) "wifi_password", wifiPassword);
+                        NvsStorage::commit();
+                        NvsStorage::close();
+                    }
+
+                    // copy ssid to data responce
+                    strncpy((char *)(dataResp+16), wifiSsid, strnlen(wifiSsid, 32));
+
+                    static WsData wsData = {
+                        .size = 16+32,
+                        .ptr = malloc(16+32)
+                    };
+                    memcpy(wsData.ptr, &dataResp, wsData.size);
+
+                    xQueueGenericSend(wsSendCustomEvtQueue, (void *) &wsData, (TickType_t) 0, queueSEND_TO_BACK);
+                }
+
+            }
+            return true;
+        }
+    }
+
+    #endif
+
+    return false;
+}
+
+/**
+ * 
+ */
+void Wifi::wsSendCustomTask(void *arg){
+    WsData *wsData = new WsData();
+    for(;;){
+        if(xQueueReceive(wsSendCustomEvtQueue, wsData, portMAX_DELAY)){
+            // ESP_LOG_BUFFER_HEXDUMP("wsSendCustomTask", wsData->ptr, 16, ESP_LOG_INFO);
+            ws_server_send_bin_all((char *) wsData->ptr, wsData->size);
+        }
+    }
+}
+
+#endif
+
+
 void Wifi::recieveBinary(void (*func)(uint8_t *data, uint32_t length)){
     Wifi::recieveBinaryFunc = func;
 }
@@ -574,6 +861,52 @@ void Wifi::httpServeReq(bool (*func)(struct netconn *conn, char *buf, uint32_t l
 void Wifi::setHostname(char *name){
     Wifi::hostname = name;
 }
+
+/**
+ * Получение hostname
+ */
+char* Wifi::getHostname(){
+    return Wifi::hostname;
+}
+
+/**
+ * Сканирование сетей
+ * ( for next release )
+ */
+void Wifi::scanNetworks(void (*func)()){
+
+    // wifi_scan_config_t scanConf = {
+    //     .ssid = NULL,
+    //     .bssid = NULL,
+    //     .channel = 0,
+    //     .show_hidden = true
+    // };
+
+    // Wifi::scanFunc = func;
+
+    // ESP_ERROR_CHECK( esp_wifi_scan_start(&scanConf, true) );
+
+}
+
+void Wifi::scanNetworksList(system_event_t* event){
+
+    uint16_t apCount = 0;
+    esp_wifi_scan_get_ap_num(&apCount);
+    ESP_LOGI(TAG, "Number of access points found: %d; %d", event->event_info.scan_done.number, apCount);
+
+    if(scanFunc != NULL){
+        (*scanFunc)();
+    }
+
+    // ESP_ERROR_CHECK( esp_wifi_scan_stop() );
+
+}
+
+void Wifi::sendScanListToWs(){
+
+}
+
+
 
 #if CONFIG_AMIKODEV_WIFI_SD_CARD
 /**

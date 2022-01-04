@@ -1,6 +1,6 @@
 /*
 amikodev/components-esp32 - library components on esp-idf
-Copyright © 2020 Prihodko Dmitriy - asketcnc@yandex.ru
+Copyright © 2020-2022 Prihodko Dmitriy - asketcnc@yandex.ru
 */
 
 /*
@@ -57,6 +57,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "spiffs-storage.hpp"
 #endif
 
+#if CONFIG_AMIKODEV_WIFI_NVS_FLASH
+#include "nvs-storage.hpp"
+#endif
+
 
 /**
  * WiFi
@@ -65,6 +69,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 class Wifi{
 
 public:
+
+    struct WsData{
+        uint64_t size;
+        void *ptr;
+    };
 
     enum STORAGE_TYPE{
         STORAGE_NONE = 0,
@@ -82,6 +91,8 @@ private:
 
     static char *hostname;
 
+    static bool connected;
+
 #if CONFIG_AMIKODEV_WIFI_SD_CARD
     static SdCardStorage *sdCard;
 #endif
@@ -89,6 +100,22 @@ private:
 #if CONFIG_AMIKODEV_WIFI_SPIFFS
     static SpiffsStorage *spiffs;
 #endif
+
+#if CONFIG_AMIKODEV_WIFI_USE_WEBSOCKET
+    static xQueueHandle wsSendCustomEvtQueue;
+#endif
+
+    static const uint8_t WS_OBJ_NAME_WIFI;
+
+    static const uint8_t WS_WIFI_SETTINGS;
+    static const uint8_t WS_WIFI_SCAN;
+
+    static const uint8_t WS_CMD_READ;
+    static const uint8_t WS_CMD_WRITE;
+
+    static const uint8_t WS_WIFI_MODE_STA;
+    static const uint8_t WS_WIFI_MODE_AP;
+
 
 public:
 
@@ -99,9 +126,33 @@ public:
 
     static bool (*httpServeReqFunc)(struct netconn *conn, char *buf, uint32_t length);
 
+    static void (*scanFunc)();      // for next release
+
+    /**
+     * 
+     */
     void setup();
 
-    static esp_err_t eventHandler(void* ctx, system_event_t* event);
+    /**
+     * Подключение к точке доступа из параметров компиляции (menuconfig)
+     */
+    void connectSystemSta();
+
+    /**
+     * Создание точки доступа по параметрам компиляции (menuconfig)
+     */
+    void connectSystemAp();
+
+    /**
+     * Подключение к точке доступа или создание новой из полльзовательских параметров
+     */
+    void connectUserSettingsApSta();
+
+
+    static esp_err_t systemStaEventHandler(void* ctx, system_event_t* event);
+    static esp_err_t systemApEventHandler(void* ctx, system_event_t* event);
+    static esp_err_t userSettingsApStaEventHandler(void* ctx, system_event_t* event);
+
 
 #if CONFIG_AMIKODEV_WIFI_INCLUDE_EMBED_WEB_FILES
     static void getResourceHandler(struct netconn *conn, const char *header, const uint8_t start[], const uint8_t end[]);
@@ -127,6 +178,18 @@ public:
     static void websocketCallback(uint8_t num, WEBSOCKET_TYPE_t type, char* msg, uint64_t len);
     void wsDisconnect(void (*func)());
     static void countTask(void* pvParameters);
+
+    /**
+     * Обработка входящего сообщения
+     * @return bool флаг системного сообщения
+     */
+    static bool websocketRecieveBinary(uint8_t *data, uint32_t length);
+
+    /**
+     * 
+     */
+    static void wsSendCustomTask(void *arg);
+
 #endif
 
     void httpServeReq(bool (*func)(struct netconn *conn, char *buf, uint32_t length));
@@ -136,6 +199,19 @@ public:
      * @param name hostname
      */
     void setHostname(char *name);
+
+    /**
+     * Получение hostname
+     */
+    char* getHostname();
+
+    /**
+     * Сканирование сетей
+     * ( for next release )
+     */
+    static void scanNetworks(void (*func)());
+    static void scanNetworksList(system_event_t* event);
+    static void sendScanListToWs();
 
 #if CONFIG_AMIKODEV_WIFI_SD_CARD
     /**

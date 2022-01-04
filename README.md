@@ -143,7 +143,7 @@ sl.write(0, 0x31);
 
 ```cpp
 Wifi wifi;
-wifi.setupAP();
+wifi.setup();
 
 // при использовании SD-карты:
 SdCardStorage *card = new SdCardStorage();
