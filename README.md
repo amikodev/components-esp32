@@ -118,6 +118,40 @@ if(spiffs->init((char *)"/spiffs")){
 }
 ```
 
+## nvs-storage
+Работа с энергонезависимой памятью.
+
+Запись:
+```cpp
+NvsStorage::init((char *) "cpp_esp32");
+
+NvsStorage::open();
+NvsStorage::setValue((char *) "wifi_mode", (char *) "STA");
+NvsStorage::setValue((char *) "wifi_ssid", (char *) "QWERTY");
+NvsStorage::setValue((char *) "wifi_password", (char *) "12345678");
+NvsStorage::commit();
+NvsStorage::close();
+```
+
+Чтение:
+```cpp
+NvsStorage::init((char *) "cpp_esp32");
+
+if(NvsStorage::isInited()){
+    char *wifiMode = NULL;
+    char *wifiSsid = NULL;
+    char *wifiPassword = NULL;
+
+    NvsStorage::open();
+    try{
+        wifiMode = NvsStorage::getStr((char *) "wifi_mode");
+        wifiSsid = NvsStorage::getStr((char *) "wifi_ssid");
+        wifiPassword = NvsStorage::getStr((char *) "wifi_password");
+    } catch(const std::runtime_error &error){}
+    NvsStorage::close();
+}
+```
+
 ## shiftload
 Работа с выводным сдвиговым регистром 74HC595N.
 
