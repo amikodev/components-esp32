@@ -7,6 +7,7 @@
 * [relay](#relay)
 * [sdcard-storage](#sdcard-storage)
 * [spiffs-storage](#spiffs-storage)
+* [nvs-storage](#nvs-storage)
 * [shiftload](#shiftload)
 * [wifi](#wifi)
 
