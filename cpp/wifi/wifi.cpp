@@ -760,9 +760,9 @@ bool Wifi::websocketRecieveBinary(uint8_t *data, uint32_t length){
         if(*(data) == WS_OBJ_NAME_WIFI && *(data+1) == WS_WIFI_SETTINGS){
 
             uint8_t dataResp[16+32] = {0};
-                dataResp[0] = WS_OBJ_NAME_WIFI;
-                dataResp[1] = WS_WIFI_SETTINGS;
-                dataResp[2] = WS_CMD_READ;
+            dataResp[0] = WS_OBJ_NAME_WIFI;
+            dataResp[1] = WS_WIFI_SETTINGS;
+            dataResp[2] = WS_CMD_WRITE;
 
             if(*(data+2) == WS_CMD_WRITE){
                 uint8_t mode = *(data+3);
